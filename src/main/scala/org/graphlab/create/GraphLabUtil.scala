@@ -1,4 +1,4 @@
-package org.graphlab.spark
+package org.graphlab.create
 
 import java.io._
 import java.net._
@@ -155,7 +155,7 @@ object GraphLabUtil {
   def pipedGLCPartition(command: String,
       iter: Iterator[Array[Byte]], 
       envVars: Map[String, String] = Map()): 
-    Iterator[(String, Array[Byte])] = {
+    Iterator[String] = {
     // Much of this code is borrowed from org.apache.spark.rdd.PippedRDD
     val pb = new java.lang.ProcessBuilder(command)
 
@@ -169,7 +169,7 @@ object GraphLabUtil {
     val currentDir = new File(".")
     val taskDirFile = new File(taskDirectory)
     taskDirFile.mkdirs()
-    // try {
+    // try { // TODO: should come up with a way to manage errors more effectively (log4j?)
       val tasksDirFilter = new NotEqualsFileNameFilter("tasks")
 
       // Need to add symlinks to jars, files, and directories.  On Yarn we could have
@@ -192,7 +192,6 @@ object GraphLabUtil {
 
     // Luanch the graphlab create process
     val proc = pb.start()
-    // val env = SparkEnv.get
 
     // Start a thread to print the process's stderr to ours
     new Thread("stderr reader for " + command) {
@@ -208,11 +207,13 @@ object GraphLabUtil {
     // Start a thread to feed the process input from our parent's iterator
     new Thread("stdin writer for " + command) {
       override def run() {
-        // Todo: probably use a buffered output stream as the docs suggest....
-        val out = proc.getOutputStream
-        iter.foreach(barray => out.write(barray))
-        // val out = new PrintWriter(proc.getOutputStream)
-        // iter.foreach(barray => out.println(encoder.encode(barray).replaceAll("\n","")) )
+        val out = new java.io.DataOutputStream(proc.getOutputStream)
+        for(bytes <- iter) {
+          out.writeInt(bytes.length)
+          out.write(bytes)
+        }
+        // Send end of file
+        out.writeInt(-1)
         out.close()
       }
     }.start()
@@ -223,14 +224,19 @@ object GraphLabUtil {
     // Return an iterator that read lines from the process's stdout
     val pathNames = Source.fromInputStream(proc.getInputStream).getLines()
 
-    new Iterator[(String, Array[Byte])] {
-      def next(): (String, Array[Byte]) = {
+    new Iterator[String] {
+      def next(): String = {
         val fileName = pathNames.next()
-        // val fin = new FileInputStream(fileName)
-        // TODO: switch to apache commons see note on line 21
+        /**
+         * Consider sending the files directly rather than pulling at the driver
+         *
+        val fin = new FileInputStream(fileName)
+        TODO: switch to apache commons see note on line 21
         val path = Paths.get(fileName);
         val bytes = Files.readAllBytes(path);
         (fileName, bytes)
+        */
+        fileName
       }
       def hasNext: Boolean = {
         if (pathNames.hasNext) {
@@ -256,8 +262,8 @@ object GraphLabUtil {
   }
 
 
-  def toSFrame(command: String, jrdd: JavaRDD[Array[Byte]],
-    envVars: Map[String, String] = Map(), finalDestination: String) {
+  def pipeToSFrames(command: String, jrdd: JavaRDD[Array[Byte]],
+    envVars: Map[String, String] = Map()): JavaRDD[String] = {
     var files = jrdd.rdd.mapPartitions {
       (iter: Iterator[Array[Byte]]) => pipedGLCPartition(command, iter, envVars)
     }
@@ -267,12 +273,13 @@ object GraphLabUtil {
     //   files = files.coalesce(nextSize).mapPartitions(concatSFrames)
     //   nextSize /= 2
     // }
-    for ((fname, bytes) <- files.collect()) {
-      println(s"Saving bytes locally to $fname")
-      val fos = new java.io.FileOutputStream(fname)
-      fos.write(bytes)
-      fos.close()
-    }
+    // for ((fname, bytes) <- files.collect()) {
+    //   println(s"Saving bytes locally to $fname")
+    //   val fos = new java.io.FileOutputStream(fname)
+    //   fos.write(bytes)
+    //   fos.close()
+    // }
+    files
   }
 
 
