@@ -134,6 +134,24 @@ object GraphLabUtil {
     }
   }
 
+
+  /**
+   * Install the bundled binary in the temporary directory location
+   */
+  def installBinary(name: String) {
+    val rootDirectory = SparkFiles.getRootDirectory()
+    val outputPath = Paths.get(rootDirectory, name)
+    if (!outputPath.toFile().exists()) {
+      // Get the binary resources bundled in the jar file
+      // Note that the binary must be located in: 
+      //   src/main/resources/org/graphlab/create/
+      val in = GraphLabUtil.getClass().getResourceAsStream(name)
+      Files.copy(in, outputPath)
+      outputPath.toFile().setExecutable(true)
+    }
+  }
+
+
   def pipedGLCPartition(command: String,
       iter: Iterator[Array[Byte]], 
       envVars: Map[String, String] = Map(),
@@ -324,4 +342,4 @@ object GraphLabUtil {
     }.toJavaRDD()
   }
 
-}
+} // End of GraphLabUtil
