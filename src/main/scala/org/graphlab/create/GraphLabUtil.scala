@@ -151,14 +151,53 @@ object GraphLabUtil {
     }
   }
 
+  /**
+   * Get the platform information as a simple string: mac, linux, windows
+   */
+  def getPlatform(): String = {
+    val osName = System.getProperty("os.name")
+    if (osName == "Mac OS X") {
+      "mac"
+    } else if (osName.toLowerCase().contains("windows")) {
+      "windows"
+    } else if (osName == "Linux") {
+      "linux"
+    } else {
+      throw Exception("Unsupported platform for Spark Integration.")
+    }
+  }
 
-  def pipedGLCPartition(command: String,
+  /**
+   * Get the platform specific binary name for the sframe binary.
+   */
+  def getBinaryName(): String =  {
+    "sframe_bin_" + getPlatform() 
+  }
+
+
+  /**
+   * Install all platform specific binaries in the temporary 
+   * working directory.
+   */
+  def installPlatformBinaries() {
+    // TODO: Install support dynamic libraries
+    installBinary(getBinaryName())
+  }
+
+
+  /**
+   * This function takes an iterator over arrays of bytes and executes
+   * the SFrame binary on the arrays of bytes.
+   */
+  def pipedGLCPartition(
+      args: List[String],
       iter: Iterator[Array[Byte]], 
       envVars: Map[String, String] = Map(),
       mode: String): 
     Iterator[String] = {
+
     // Much of this code is "borrowed" from org.apache.spark.rdd.PippedRDD
-    val pb = new java.lang.ProcessBuilder(command.split(" ").toList)
+    val pb = new java.lang.ProcessBuilder(List(getBinaryName()) ++ args)
 
     // Add the environmental variables to the process.
     val currentEnvVars = pb.environment()
