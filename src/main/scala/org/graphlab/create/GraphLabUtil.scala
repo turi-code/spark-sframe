@@ -10,14 +10,18 @@ import scala.collection.JavaConversions._
 import scala.reflect.ClassTag
 import scala.util.Try
 import scala.io.Source
+import scala.collection.mutable
 
 import net.razorvine.pickle.{Pickler, Unpickler}
+
 
 import org.apache.spark._
 import org.apache.spark.api.java.{JavaSparkContext, JavaPairRDD, JavaRDD}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.Utils
 import org.apache.commons.io.FileUtils
+import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.Row
 
 // REQUIRES JAVA 7.  
 // Consider switching to http://commons.apache.org/proper/commons-io/apidocs/org/apache/commons/io/IOUtils.html#toByteArray%28java.io.InputStream%29
@@ -163,7 +167,7 @@ object GraphLabUtil {
     } else if (osName == "Linux") {
       "linux"
     } else {
-      throw Exception("Unsupported platform for Spark Integration.")
+      throw new Exception("Unsupported platform for Spark Integration.")
     }
   }
 
@@ -189,11 +193,11 @@ object GraphLabUtil {
    * This function takes an iterator over arrays of bytes and executes
    * the SFrame binary on the arrays of bytes.
    */
-  def pipedGLCPartition(
+  def unityIterator(
+      mode: String,
       args: List[String],
       iter: Iterator[Array[Byte]], 
-      envVars: Map[String, String] = Map(),
-      mode: String): 
+      envVars: Map[String, String] = Map()): 
     Iterator[String] = {
 
     // Much of this code is "borrowed" from org.apache.spark.rdd.PippedRDD
@@ -210,7 +214,7 @@ object GraphLabUtil {
     val proc = pb.start()
 
     // Start a thread to print the process's stderr to ours
-    new Thread("stderr reader for " + command) {
+    new Thread("stderr reader for pickleIterator") {
       override def run() {
         for (line <- Source.fromInputStream(proc.getErrorStream).getLines) {
           // scalastyle:off println
@@ -221,7 +225,7 @@ object GraphLabUtil {
     }.start()
 
     // Start a thread to feed the process input from our parent's iterator
-    new Thread("stdin writer for " + command) {
+    new Thread("stdin writer for pickleIterator") {
       override def run() {
         if(mode == "tosframe"){
           val out = proc.getOutputStream
@@ -278,6 +282,38 @@ object GraphLabUtil {
 
 
   /**
+   * This function is borrowed directly from Apache Spark SerDeUtil.scala (thanks!)
+   * 
+   * It uses the razorvine Pickler (again thank you!) to convert an Iterator over
+   * java objects to an Iterator over pickled python objects.
+   *
+   */
+  class AutoBatchedPickler(iter: Iterator[Any]) extends Iterator[Array[Byte]] {
+    private val pickle = new Pickler()
+    private var batch = 1
+    private val buffer = new mutable.ArrayBuffer[Any]
+
+    override def hasNext: Boolean = iter.hasNext
+
+    override def next(): Array[Byte] = {
+      while (iter.hasNext && buffer.length < batch) {
+        buffer += iter.next()
+      }
+      val bytes = pickle.dumps(buffer.toArray)
+      val size = bytes.length
+      // let  1M < size < 10M
+      if (size < 1024 * 1024) {
+        batch *= 2
+      } else if (size > 1024 * 1024 * 10 && batch > 1) {
+        batch /= 2
+      }
+      buffer.clear()
+      bytes
+    }
+  }
+
+
+  /**
    * pipeToSFrames takes a command an array of serialized bytes representing 
    * python objects to be converted into an SFrame.  This function then uses
    * the command on each partition to launch a native GraphLab process which
@@ -286,13 +322,25 @@ object GraphLabUtil {
    * This function then returns an array of filenames referencing each 
    * of the constructed SFrames.
    */
-  def pipeToSFrames(command: String, jrdd: JavaRDD[Array[Byte]],
-    envVars: java.util.HashMap[String, String], mode: String): JavaRDD[String] = {
-    println("Calling the pipe to SFRame function")
-    var files = jrdd.rdd.mapPartitions {
-      (iter: Iterator[Array[Byte]]) => pipedGLCPartition(command, iter, envVars.toMap,mode)
+  def unityPipe(mode: String, args: List[String], jrdd: JavaRDD[Array[Byte]],
+      envVars: java.util.HashMap[String, String]): JavaRDD[String] = {
+    val files = jrdd.rdd.mapPartitions {
+      (iter: Iterator[Array[Byte]]) => unityIterator(mode, args, iter, envVars.toMap)
     }
     files
+  }
+  
+
+  /**
+   * Take a dataframe and convert it to an sframe
+   */
+  def toSFrame(args: List[String], 
+      df: DataFrame, 
+      envVars: java.util.HashMap[String, String]): JavaRDD[String] = {
+    var javaRDDofPickles = df.rdd.mapPartitions {
+      (iter: Iterator[Row]) => new AutoBatchedPickler(iter)
+    }
+    toSFrame(args, javaRDDofPickles, envVars)
   }
   
 
