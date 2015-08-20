@@ -136,7 +136,8 @@ object GraphLabUtil {
 
   def pipedGLCPartition(command: String,
       iter: Iterator[Array[Byte]], 
-      envVars: Map[String, String] = Map()): 
+      envVars: Map[String, String] = Map(),
+      mode: String): 
     Iterator[String] = {
     // Much of this code is "borrowed" from org.apache.spark.rdd.PippedRDD
     val pb = new java.lang.ProcessBuilder(command.split(" ").toList)
@@ -144,7 +145,7 @@ object GraphLabUtil {
     // Add the environmental variables to the process.
     val currentEnvVars = pb.environment()
     envVars.foreach { case (variable, value) => currentEnvVars.put(variable, value) }
-
+    //envVars.foreach {println (_)}
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
 
@@ -165,14 +166,25 @@ object GraphLabUtil {
     // Start a thread to feed the process input from our parent's iterator
     new Thread("stdin writer for " + command) {
       override def run() {
-        val out = proc.getOutputStream
-        for(bytes <- iter) {
-          writeInt(bytes.length, out)
-          out.write(bytes)
+        if(mode == "tosframe"){
+          val out = proc.getOutputStream
+          for(bytes <- iter) {
+            writeInt(bytes.length, out)
+            out.write(bytes)
+          }
+          // Send end of file
+          writeInt(-1, out)
+          out.close()
         }
-        // Send end of file
-        writeInt(-1, out)
-        out.close()
+        else {
+          val out = new PrintWriter(proc.getOutputStream)
+          val unpickle = new Unpickler
+          for (elem <- iter) {
+            var l: JArrayList[String] = unpickle.loads(elem).asInstanceOf[JArrayList[String]]
+            l.foreach(item => out.println(item))
+          }
+          out.close()
+        }
       }
     }.start()
 
@@ -218,10 +230,10 @@ object GraphLabUtil {
    * of the constructed SFrames.
    */
   def pipeToSFrames(command: String, jrdd: JavaRDD[Array[Byte]],
-    envVars: java.util.HashMap[String, String]): JavaRDD[String] = {
+    envVars: java.util.HashMap[String, String], mode: String): JavaRDD[String] = {
     println("Calling the pipe to SFRame function")
     var files = jrdd.rdd.mapPartitions {
-      (iter: Iterator[Array[Byte]]) => pipedGLCPartition(command, iter, envVars.toMap)
+      (iter: Iterator[Array[Byte]]) => pipedGLCPartition(command, iter, envVars.toMap,mode)
     }
     files
   }
