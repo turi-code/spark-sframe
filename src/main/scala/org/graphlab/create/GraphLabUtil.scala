@@ -1,4 +1,4 @@
-package org.graphlab.spark
+package org.graphlab.create
 
 import java.io._
 import java.net._
@@ -75,6 +75,16 @@ object GraphLabUtil {
        return output.toString
   }
    
+  /**
+   * Write an integer in native order.
+   */
+  def writeInt(x: Int, out: java.io.OutputStream) {
+    out.write(x.toByte)
+    out.write((x >> 8).toByte)
+    out.write((x >> 16).toByte)
+    out.write((x >> 24).toByte)
+  }
+
   def EscapeString(s: String) : String = { 
     val replace_char = '\u001F'
     val output = new StringBuilder()
@@ -118,34 +128,6 @@ object GraphLabUtil {
     return output.toString
   } 
 
-
-  /**
-   * Creates a symlink. Note jdk1.7 has Files.createSymbolicLink but not used here
-   * for jdk1.6 support.  Supports windows by doing copy, everything else uses "ln -sf".
-   * @param src absolute path to the source
-   * @param dst relative path for the destination
-   */
-  // def symlink(src: File, dst: File) {
-  //   if (!src.isAbsolute()) {
-  //     throw new IOException("Source must be absolute")
-  //   }
-  //   if (dst.isAbsolute()) {
-  //     throw new IOException("Destination must be relative")
-  //   }
-  //   var cmdSuffix = ""
-  //   val linkCmd = if (isWindows) {
-  //     // refer to http://technet.microsoft.com/en-us/library/cc771254.aspx
-  //     cmdSuffix = " /s /e /k /h /y /i"
-  //     "cmd /c xcopy "
-  //   } else {
-  //     cmdSuffix = ""
-  //     "ln -sf "
-  //   }
-  //   import scala.sys.process._
-  //   (linkCmd + src.getAbsolutePath() + " " + dst.getPath() + cmdSuffix) lines_!
-  //   ProcessLogger(line => logInfo(line))
-  // }
-
   class NotEqualsFileNameFilter(filterName: String) extends FilenameFilter {
     def accept(dir: File, name: String): Boolean = {
       !name.equals(filterName)
@@ -155,44 +137,19 @@ object GraphLabUtil {
   def pipedGLCPartition(command: String,
       iter: Iterator[Array[Byte]], 
       envVars: Map[String, String] = Map()): 
-    Iterator[(String, Array[Byte])] = {
-    // Much of this code is borrowed from org.apache.spark.rdd.PippedRDD
-    val pb = new java.lang.ProcessBuilder(command)
+    Iterator[String] = {
+    // Much of this code is "borrowed" from org.apache.spark.rdd.PippedRDD
+    val pb = new java.lang.ProcessBuilder(command.split(" ").toList)
 
     // Add the environmental variables to the process.
     val currentEnvVars = pb.environment()
     envVars.foreach { case (variable, value) => currentEnvVars.put(variable, value) }
 
-    // This code is setup to ensure that each worker thread gets it's own isolated directory
-    val taskDirectory = "tasks" + File.separator + java.util.UUID.randomUUID.toString
-    var workInTaskDirectory = false
-    val currentDir = new File(".")
-    val taskDirFile = new File(taskDirectory)
-    taskDirFile.mkdirs()
-    // try {
-      val tasksDirFilter = new NotEqualsFileNameFilter("tasks")
-
-      // Need to add symlinks to jars, files, and directories.  On Yarn we could have
-      // directories and other files not known to the SparkContext that were added via the
-      // Hadoop distributed cache.  We also don't want to symlink to the /tasks directories we
-      // are creating here.
-      for (file <- currentDir.list(tasksDirFilter)) {
-        val fileWithDir = new File(currentDir, file)
-        val src = new File(fileWithDir.getAbsolutePath()).toPath()
-        val dst = new File(taskDirectory + File.separator + fileWithDir.getName()).toPath
-        // TODO: This requires java 7.  Fix Spark implementation of code and put back here.
-        Files.createSymbolicLink(src, dst)
-      }
-      pb.directory(taskDirFile)
-      workInTaskDirectory = true
-    // } catch {
-    //   case e: Exception => println("Error")
-    // }
-
+    // Set the working directory 
+    pb.directory(new File(SparkFiles.getRootDirectory()))
 
     // Luanch the graphlab create process
     val proc = pb.start()
-    // val env = SparkEnv.get
 
     // Start a thread to print the process's stderr to ours
     new Thread("stderr reader for " + command) {
@@ -208,29 +165,33 @@ object GraphLabUtil {
     // Start a thread to feed the process input from our parent's iterator
     new Thread("stdin writer for " + command) {
       override def run() {
-        // Todo: probably use a buffered output stream as the docs suggest....
         val out = proc.getOutputStream
-        iter.foreach(barray => out.write(barray))
-        // val out = new PrintWriter(proc.getOutputStream)
-        // iter.foreach(barray => out.println(encoder.encode(barray).replaceAll("\n","")) )
+        for(bytes <- iter) {
+          writeInt(bytes.length, out)
+          out.write(bytes)
+        }
+        // Send end of file
+        writeInt(-1, out)
         out.close()
       }
     }.start()
 
-    // // Wait for GLC to terminate
-    // proc.waitFor()
-
     // Return an iterator that read lines from the process's stdout
     val pathNames = Source.fromInputStream(proc.getInputStream).getLines()
 
-    new Iterator[(String, Array[Byte])] {
-      def next(): (String, Array[Byte]) = {
+    new Iterator[String] {
+      def next(): String = {
         val fileName = pathNames.next()
-        // val fin = new FileInputStream(fileName)
-        // TODO: switch to apache commons see note on line 21
+        /**
+         * Consider sending the files directly rather than pulling at the driver
+         *
+        val fin = new FileInputStream(fileName)
+        TODO: switch to apache commons see note on line 21
         val path = Paths.get(fileName);
         val bytes = Files.readAllBytes(path);
         (fileName, bytes)
+        */
+        fileName
       }
       def hasNext: Boolean = {
         if (pathNames.hasNext) {
@@ -240,15 +201,6 @@ object GraphLabUtil {
           if (exitStatus != 0) {
             throw new Exception("Subprocess exited with status " + exitStatus)
           }
-
-          // cleanup task working directory if used
-          if (workInTaskDirectory) {
-            scala.util.control.Exception.ignoring(classOf[IOException]) {
-              FileUtils.deleteDirectory(new File(taskDirectory))
-              // Utils.deleteRecursively(new File(taskDirectory))
-            }
-            //logDebug("Removed task working directory " + taskDirectory)
-          }
           false
         }
       }
@@ -256,25 +208,24 @@ object GraphLabUtil {
   }
 
 
-  def toSFrame(command: String, jrdd: JavaRDD[Array[Byte]],
-    envVars: Map[String, String] = Map(), finalDestination: String) {
+  /**
+   * pipeToSFrames takes a command an array of serialized bytes representing 
+   * python objects to be converted into an SFrame.  This function then uses
+   * the command on each partition to launch a native GraphLab process which
+   * reads the bytes through standard in and outputs SFrames to a shared
+   * FileSystems (either HDFS or the local temporary directory).  
+   * This function then returns an array of filenames referencing each 
+   * of the constructed SFrames.
+   */
+  def pipeToSFrames(command: String, jrdd: JavaRDD[Array[Byte]],
+    envVars: java.util.HashMap[String, String]): JavaRDD[String] = {
+    println("Calling the pipe to SFRame function")
     var files = jrdd.rdd.mapPartitions {
-      (iter: Iterator[Array[Byte]]) => pipedGLCPartition(command, iter, envVars)
+      (iter: Iterator[Array[Byte]]) => pipedGLCPartition(command, iter, envVars.toMap)
     }
-    // TODO: Implement reduction tree.
-    // var nextSize = files.numPartitions / 2
-    // while (nextSize > 1) {
-    //   files = files.coalesce(nextSize).mapPartitions(concatSFrames)
-    //   nextSize /= 2
-    // }
-    for ((fname, bytes) <- files.collect()) {
-      println(s"Saving bytes locally to $fname")
-      val fos = new java.io.FileOutputStream(fname)
-      fos.write(bytes)
-      fos.close()
-    }
+    files
   }
-
+  
 
   def stringToByte(jRDD: JavaRDD[String]): JavaRDD[Array[Byte]] = { 
     jRDD.rdd.mapPartitions { iter =>
