@@ -16,6 +16,7 @@ import net.razorvine.pickle.{Pickler, Unpickler}
 
 
 import org.apache.spark._
+import org.apache.spark.SparkContext
 import org.apache.spark.api.java.{JavaSparkContext, JavaPairRDD, JavaRDD}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.Utils
@@ -33,6 +34,7 @@ import java.nio.file.Paths
 
 object GraphLabUtil {
 
+
   /**
    * The types of unity mode supported and their corresponding
    * command line arguments
@@ -40,7 +42,7 @@ object GraphLabUtil {
   object UnityMode extends Enumeration {
     type UnityMode = Value
     val ToSFrame = Value(" --mode=tosframe ")
-    val FromSFrame = Value(" --mode=tordd ")
+    val ToRDD = Value(" --mode=tordd ")
     val Concat = Value(" --mode=concat ")
   }
   import UnityMode._
@@ -77,6 +79,7 @@ object GraphLabUtil {
     }
   }
 
+
   /**
    * Create the desired output directory which may (is likely)
    * on HDFS.  
@@ -104,6 +107,14 @@ object GraphLabUtil {
 
 
   /**
+   * Read an integer in native ordering.
+   */
+  def readInt(in: java.io.InputStream): Int =  {
+    in.read() | (in.read() << 8) | (in.read() << 16) | (in.read() << 24)
+  }
+
+
+  /**
    * Install the bundled binary in this jar stored in:
    *     src/main/deps/org/graphlab/create 
    * in the temporary directory location used by Spark.
@@ -111,13 +122,13 @@ object GraphLabUtil {
   def installBinary(name: String) {
     val rootDirectory = SparkFiles.getRootDirectory()
     val outputPath = Paths.get(rootDirectory, name)
-    if (!outputPath.toFile().exists()) {
+    if (!outputPath.toFile.exists()) {
       // Get the binary resources bundled in the jar file
       // Note that the binary must be located in: 
       //   src/main/resources/org/graphlab/create/
-      val in = GraphLabUtil.getClass().getResourceAsStream(name)
+      val in = GraphLabUtil.getClass.getResourceAsStream(name)
       Files.copy(in, outputPath)
-      outputPath.toFile().setExecutable(true)
+      outputPath.toFile.setExecutable(true)
     }
   }
 
@@ -129,7 +140,7 @@ object GraphLabUtil {
     val osName = System.getProperty("os.name")
     if (osName == "Mac OS X") {
       "mac"
-    } else if (osName.toLowerCase().contains("windows")) {
+    } else if (osName.toLowerCase.contains("windows")) {
       "windows"
     } else if (osName == "Linux") {
       "linux"
@@ -166,13 +177,16 @@ object GraphLabUtil {
   /**
    * Build and launch a process with the appropriate arguments.
    *
-   * TODO: annotate the return type
+   * @todo: make private
    */
-  def launchProcess(mode: UnityMode, args: List[String]) = {
+  def launchProcess(mode: UnityMode, args: String): Process = {
     // Much of this code is "borrowed" from org.apache.spark.rdd.PippedRDD
     // Construct the process builder with the full argument list 
     // including the unity binary name and unity mode
-    val fullArgList = List(getBinaryName(), mode.toString) ++ args
+    val fullArgList = List(getBinaryName(), mode.toString) ++
+      args.split(" ").filter(_.nonEmpty).toList
+    // Display the command being run
+    println("Launching Unity: \n\t" + fullArgList.mkString(" "))
     val pb = new java.lang.ProcessBuilder(fullArgList)
     // Add the environmental variables to the process.
     val env = pb.environment()
@@ -207,10 +221,7 @@ object GraphLabUtil {
    * This function takes an iterator over arrays of bytes and executes
    * the unity binary
    */
-  def toSFrameIterator(
-      args: List[String],
-      iter: Iterator[Array[Byte]]): 
-    Iterator[String] = {
+  def toSFrameIterator(args: String, iter: Iterator[Array[Byte]]): Iterator[String] = {
     // Launch the unity process
     val proc = launchProcess(UnityMode.ToSFrame, args)
     // Start a thread to feed the process input from our parent's iterator
@@ -250,12 +261,59 @@ object GraphLabUtil {
 
 
   /**
+   * This function creates an iterator that returns arrays of pickled bytes read from
+   * the unity process.
+   *
+   * @todo Make private.
+   *
+   * @param partId the partition id of this iterator
+   * @param numPart the number of partitions
+   * @param args additional arguments constructed for the unity process
+   * @return
+   */
+  def toRDDIterator(partId: Int, numPart: Int, args: String): Iterator[Array[Byte]] = {
+    // Update the Args list with the extra information
+    val finalArgs = args + s" --numPartitions=$numPart --partId=$partId "
+    // Launch the unity process
+    val proc = launchProcess(UnityMode.ToRDD, finalArgs)
+    // Create an iterator that reads bytes directly from the unity process
+    new Iterator[Array[Byte]] {
+      // Binary input stream from the process standard out
+      val in = proc.getInputStream()
+      // The number of bytes to read next (may be 0 or more)
+      var nextBytes = readInt(in)
+      // Retunr the next array of bytes which could have length 0 or more.
+      def next(): Array[Byte] = {
+        // Verify that we have bytes to read
+        if (nextBytes < 0) {
+          throw new Exception("Reading past end of SFrame")
+        }
+        // Allocate a buffer and read the bytes
+        val buffer = new Array[Byte](nextBytes)
+        val bytesRead = in.read(buffer)
+        // Verify that we read enough bytes
+        if (bytesRead != nextBytes) {
+          throw new Exception("Error in reading SFrame")
+        }
+        // Get the length of the next frame of bytes
+        nextBytes = readInt(in)
+        // Return the buffer
+        buffer
+      }
+      // There are additional bytes to read if nextBytes >= 0
+      def hasNext: Boolean = nextBytes >= 0
+    }
+  }
+
+
+  /**
    * This function takes a collection of sframes and concatenates
    * them into a single sframe
    *
    * TODO: make this function private. 
    */
-  def concat(args: List[String], sframes: Array[String]): String = {
+  def concat(args: String, sframes: Array[String]): String = {
+    // Launch the graphlab unity process
     val proc = launchProcess(UnityMode.Concat, args)
 
     // Write all the filenames to standard in for the child process
@@ -271,7 +329,7 @@ object GraphLabUtil {
 
     // Get an iterator over the output
     val outputIter = Source.fromInputStream(proc.getInputStream).getLines()
-    if (!outputIter.hasNext()) {
+    if (!outputIter.hasNext) {
       throw new Exception("Concatenation failed!")
     }
     // Get and return the name of the final SFrame
@@ -284,23 +342,22 @@ object GraphLabUtil {
    * This function takes a pyspark RDD exposed by the JavaRDD of bytes
    * and constructs an SFrame.
    *
-   * @arg outputDir: The directory in which to store the SFrame
-   * @arg args: The list of command line arguments to the unity process
-   * @arg jrdd: The java rdd corresponding to the pyspark rdd
-   *
+   * @param outputDir The directory in which to store the SFrame
+   * @param args The list of command line arguments to the unity process
+   * @param jrdd The java rdd corresponding to the pyspark rdd
    * @return the final filename of the output sframe.
    */
   def pySparkToSFrame(outputDir: String, args: String, jrdd: JavaRDD[Array[Byte]]): String = {
     // Create folders
     val internalOutput: String =
       makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
-    val argList = args.split(" ").toList
+    val updatedArgs = args + s" --internal=$internalOutput "
     // pipe to Unity 
     val fnames = jrdd.rdd.mapPartitions (
-      (iter: Iterator[Array[Byte]]) => { toSFrameIterator(argList, iter) }
+      (iter: Iterator[Array[Byte]]) => { toSFrameIterator(updatedArgs, iter) }
     ).collect()
-    val sframe_name = concat(argList, fnames)
-    return sframe_name
+    val sframe_name = concat(updatedArgs, fnames)
+    sframe_name
   }
 
 
@@ -309,27 +366,55 @@ object GraphLabUtil {
    */
   def toSFrame(df: DataFrame, outputDir: String, prefix: String): String = {
     // Convert the dataframe into a Java rdd of pickles of batches of Rows
-    var javaRDDofPickles = df.rdd.mapPartitions {
+    val javaRDDofPickles = df.rdd.mapPartitions {
       (iter: Iterator[Row]) => new AutoBatchedPickler(iter)
     }.toJavaRDD()
     // Construct the arguments to the graphlab unity process
-    val args = s"--outputDir=${outputDir} --prefix=${prefix} " +
-      "--encoding=batch --type=schemardd"
+    val args = s" --outputDir=${outputDir} --prefix=${prefix} " +
+      "--encoding=batch --type=schemardd "
     pySparkToSFrame(outputDir, args, javaRDDofPickles)
   }
-  
-   
-  // def pythonToJava(pyRDD: JavaRDD[Any]): JavaRDD[Object] = {
-  //   pyRDD.rdd.mapPartitions { iter =>
-  //     val unpickle = new Unpickler
-  //     iter.map { row =>
-  //       row match { 
-  //         case obj: String => obj
-  //         case everythingElse: Array[Byte] => unpickle.loads(everythingElse)
-  //       }
-  //     }
-  //   }.toJavaRDD()
-  // }
+
+
+  /**
+   * Load an SFrame into a JavaRDD of Pickled objects.
+   *
+   *
+   * @param sc
+   * @param sframePath
+   * @param args
+   * @return
+   */
+  def pySparkToRDD(sc: SparkContext, sframePath: String, args: String): JavaRDD[Array[Byte]] =  {
+    val numPartitions = sc.defaultParallelism
+    val pickledRDD = sc.parallelize(0 until numPartitions).mapPartitionsWithIndex {
+      (partId: Int, iter: Iterator[Int]) => toRDDIterator(partId, numPartitions, args)
+    }
+    pickledRDD.toJavaRDD()
+  }
+
+
+  /**
+   * Load an SFrame into an RDD of objects
+   *
+   * @todo convert objects into SparkSQL rows
+   *
+   * @param sc
+   * @param sframePath
+   * @return
+   */
+  def toRDD(sc: SparkContext, sframePath: String): RDD[AnyRef] = {
+    val args = "" // currently no special arguments required?
+    // Construct an RDD of pickled objects
+    val pickledRDD = pySparkToRDD(sc, sframePath, args).rdd
+    // Unpickle the
+    val javaRDD = pickledRDD.mapPartitions { iter =>
+      val unpickle = new Unpickler
+      iter.map(unpickle.loads)
+    }
+    javaRDD
+  }
+
 
 } // End of GraphLabUtil
 
