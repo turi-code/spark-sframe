@@ -395,7 +395,7 @@ object GraphLabUtil {
 
 
   /**
-   * Load an SFrame into an RDD of objects
+   * Load an SFrame into an RDD of dictionaries
    *
    * @todo convert objects into SparkSQL rows
    *
@@ -403,14 +403,14 @@ object GraphLabUtil {
    * @param sframePath
    * @return
    */
-  def toRDD(sc: SparkContext, sframePath: String): RDD[AnyRef] = {
+  def toRDD(sc: SparkContext, sframePath: String): RDD[java.util.HashMap[String, _]] = {
     val args = "" // currently no special arguments required?
     // Construct an RDD of pickled objects
     val pickledRDD = pySparkToRDD(sc, sframePath, args).rdd
     // Unpickle the
     val javaRDD = pickledRDD.mapPartitions { iter =>
       val unpickle = new Unpickler
-      iter.map(unpickle.loads)
+      iter.map(unpickle.loads(_).asInstanceOf[java.util.HashMap[String, _]])
     }
     javaRDD
   }
