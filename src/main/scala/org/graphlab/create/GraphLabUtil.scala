@@ -122,13 +122,15 @@ object GraphLabUtil {
   def installBinary(name: String) {
     val rootDirectory = SparkFiles.getRootDirectory()
     val outputPath = Paths.get(rootDirectory, name)
-    if (!outputPath.toFile.exists()) {
-      // Get the binary resources bundled in the jar file
-      // Note that the binary must be located in: 
-      //   src/main/resources/org/graphlab/create/
-      val in = GraphLabUtil.getClass.getResourceAsStream(name)
-      Files.copy(in, outputPath)
-      outputPath.toFile.setExecutable(true)
+    this.synchronized {
+      if (!outputPath.toFile.exists()) {
+        // Get the binary resources bundled in the jar file
+        // Note that the binary must be located in:
+        //   src/main/resources/org/graphlab/create/
+        val in = GraphLabUtil.getClass.getResourceAsStream(name)
+        Files.copy(in, outputPath)
+        outputPath.toFile.setExecutable(true)
+      }
     }
   }
 
@@ -351,16 +353,16 @@ object GraphLabUtil {
    * @param jrdd The java rdd corresponding to the pyspark rdd
    * @return the final filename of the output sframe.
    */
-  def pySparkToSFrame(outputDir: String, args: String, jrdd: JavaRDD[Array[Byte]]): String = {
+  def pySparkToSFrame(outputDir: String, additionalArgs: String, jrdd: JavaRDD[Array[Byte]]): String = {
     // Create folders
     val internalOutput: String =
       makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
-    val updatedArgs = args + s" --internal=$internalOutput "
+    val args = additionalArgs + s" --internal=$internalOutput "
     // pipe to Unity 
     val fnames = jrdd.rdd.mapPartitions (
-      (iter: Iterator[Array[Byte]]) => { toSFrameIterator(updatedArgs, iter) }
+      (iter: Iterator[Array[Byte]]) => { toSFrameIterator(args, iter) }
     ).collect()
-    val sframe_name = concat(updatedArgs, fnames)
+    val sframe_name = concat(args, fnames)
     sframe_name
   }
 
@@ -389,8 +391,9 @@ object GraphLabUtil {
    * @param args
    * @return
    */
-  def pySparkToRDD(sc: SparkContext, sframePath: String, args: String): JavaRDD[Array[Byte]] =  {
-    val numPartitions = sc.defaultParallelism
+  def pySparkToRDD(sc: SparkContext, sframePath: String, numPartitions: Int, additionalArgs: String): JavaRDD[Array[Byte]] =  {
+    // @todo we currently use the --outputDir option to encode the input dir (consider changing)
+    val args = additionalArgs + s"--outputDir=$sframePath"
     val pickledRDD = sc.parallelize(0 until numPartitions).mapPartitionsWithIndex {
       (partId: Int, iter: Iterator[Int]) => toRDDIterator(partId, numPartitions, args)
     }
@@ -407,10 +410,10 @@ object GraphLabUtil {
    * @param sframePath
    * @return
    */
-  def toRDD(sc: SparkContext, sframePath: String): RDD[java.util.HashMap[String, _]] = {
+  def toRDD(sc: SparkContext, sframePath: String, numPartitions: Int): RDD[java.util.HashMap[String, _]] = {
     val args = "" // currently no special arguments required?
     // Construct an RDD of pickled objects
-    val pickledRDD = pySparkToRDD(sc, sframePath, args).rdd
+    val pickledRDD = pySparkToRDD(sc, sframePath, numPartitions, args).rdd
     // Unpickle the
     val javaRDD = pickledRDD.mapPartitions { iter =>
       val unpickle = new Unpickler
@@ -419,6 +422,19 @@ object GraphLabUtil {
     javaRDD
   }
 
+
+  /**
+   * Load an SFrame into an RDD of dictionaries
+   *
+   * @todo convert objects into SparkSQL rows
+   *
+   * @param sc
+   * @param sframePath
+   * @return
+   */
+  def toRDD(sc: SparkContext, sframePath: String): RDD[java.util.HashMap[String, _]] = {
+    toRDD(sc, sframePath, sc.defaultParallelism)
+  }
 
 } // End of GraphLabUtil
 
