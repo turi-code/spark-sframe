@@ -159,8 +159,8 @@ object GraphLabUtil {
    *   -- Windows?: spark_unity_windows
    *
    */
-  def getBinaryName(): String =  {
-    "spark_unity_" + getPlatform() 
+  def getBinaryName(): String = {
+    "spark_unity_" + getPlatform()
   }
 
 
@@ -180,10 +180,14 @@ object GraphLabUtil {
    * @todo: make private
    */
   def launchProcess(mode: UnityMode, args: String): Process = {
+    // Install the binaries in the correct location:
+    installPlatformBinaries()
     // Much of this code is "borrowed" from org.apache.spark.rdd.PippedRDD
     // Construct the process builder with the full argument list 
     // including the unity binary name and unity mode
-    val fullArgList = List(getBinaryName(), mode.toString) ++
+    // @todo it is odd that I needed the ./ before the filename to execute it with process builder
+    val launchName = "." + java.io.File.separator + getBinaryName().trim()
+    val fullArgList = List(launchName, mode.toString) ++
       args.split(" ").filter(_.nonEmpty).toList
     // Display the command being run
     println("Launching Unity: \n\t" + fullArgList.mkString(" "))
@@ -195,7 +199,7 @@ object GraphLabUtil {
     val addPyPath = "__spark__.jar"
     val pythonPath = 
       if (env.contains("PYTHONPATH")) { 
-        env.get("PYTHONPATH") + ":" + addPyPath 
+        env.get("PYTHONPATH") + java.io.File.pathSeparator + addPyPath
       } else { 
         addPyPath 
       }
