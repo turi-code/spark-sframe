@@ -373,7 +373,7 @@ object GraphLabUtil {
   def toSFrame(df: DataFrame, outputDir: String, prefix: String): String = {
     // Convert the dataframe into a Java rdd of pickles of batches of Rows
     val javaRDDofPickles = df.rdd.mapPartitions {
-      (iter: Iterator[Row]) => new AutoBatchedPickler(iter)
+      (iter: Iterator[Row]) => new AutoBatchedPickler(iter.map(r => r.toSeq.toArray))
     }.toJavaRDD()
     // Construct the arguments to the graphlab unity process
     val args = s" --outputDir=${outputDir} --prefix=${prefix} " +
