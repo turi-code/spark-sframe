@@ -353,11 +353,14 @@ object GraphLabUtil {
    * @param jrdd The java rdd corresponding to the pyspark rdd
    * @return the final filename of the output sframe.
    */
-  def pySparkToSFrame(outputDir: String, additionalArgs: String, jrdd: JavaRDD[Array[Byte]]): String = {
+  def pySparkToSFrame(outputDir: String, prefix: String, additionalArgs: String, jrdd: JavaRDD[Array[Byte]]): String = {
     // Create folders
     val internalOutput: String =
       makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
-    val args = additionalArgs + s" --internal=$internalOutput "
+    val args = additionalArgs +
+      s" --internal=$internalOutput " +
+      s" --outputDir=$outputDir " +
+      s" --prefix=$prefix"
     // pipe to Unity 
     val fnames = jrdd.rdd.mapPartitions (
       (iter: Iterator[Array[Byte]]) => { toSFrameIterator(args, iter) }
@@ -376,9 +379,8 @@ object GraphLabUtil {
       (iter: Iterator[Row]) => new AutoBatchedPickler(iter.map(r => r.toSeq.toArray))
     }.toJavaRDD()
     // Construct the arguments to the graphlab unity process
-    val args = s" --outputDir=${outputDir} --prefix=${prefix} " +
-      "--encoding=batch --type=schemardd "
-    pySparkToSFrame(outputDir, args, javaRDDofPickles)
+    val args = "--encoding=batch --type=schemardd "
+    pySparkToSFrame(outputDir, prefix, args, javaRDDofPickles)
   }
 
 
