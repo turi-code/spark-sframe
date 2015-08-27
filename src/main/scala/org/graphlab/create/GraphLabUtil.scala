@@ -123,7 +123,9 @@ object GraphLabUtil {
     val rootDirectory = SparkFiles.getRootDirectory()
     val outputPath = Paths.get(rootDirectory, name)
     this.synchronized {
-      if (!outputPath.toFile.exists()) {
+      if (outputPath.toFile.exists() == false) {
+        println(s"Installing binary: $name")
+        println(s"\t to ${outputPath.toString()}")
         // Get the binary resources bundled in the jar file
         // Note that the binary must be located in:
         //   src/main/resources/org/graphlab/create/
@@ -189,8 +191,7 @@ object GraphLabUtil {
     // including the unity binary name and unity mode
     // @todo it is odd that I needed the ./ before the filename to execute it with process builder
     val launchName = "." + java.io.File.separator + getBinaryName().trim()
-    val fullArgList = List(launchName, mode.toString) ++
-      args.split(" ").filter(_.nonEmpty).toList
+    val fullArgList = (List(launchName, mode.toString) ++ args.split(" ")).map(_.trim).filter(_.nonEmpty).toList
     // Display the command being run
     println("Launching Unity: \n\t" + fullArgList.mkString(" "))
     val pb = new java.lang.ProcessBuilder(fullArgList)
@@ -355,10 +356,10 @@ object GraphLabUtil {
    */
   def pySparkToSFrame(outputDir: String, prefix: String, additionalArgs: String, jrdd: JavaRDD[Array[Byte]]): String = {
     // Create folders
-    val internalOutput: String =
-      makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
+//    val internalOutput: String =
+//      makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
     val args = additionalArgs +
-      s" --internal=$internalOutput " +
+      s" --internal=$outputDir " +
       s" --outputDir=$outputDir " +
       s" --prefix=$prefix"
     // pipe to Unity 
