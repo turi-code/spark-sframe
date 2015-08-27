@@ -92,6 +92,9 @@ object GraphLabUtil {
   def makeDir(outputDir: Path, sc: SparkContext): String = {
     val fs = FileSystem.get(sc.hadoopConfiguration)
     val success = fs.mkdirs(outputDir)
+    if (!success) {
+      println("Error making " + outputDir.toString)
+    }
     // TODO: Do something about when not success.
     outputDir.toString
   }
@@ -211,16 +214,11 @@ object GraphLabUtil {
     val env = pb.environment()
     // Getting the current python path and adding a separator if necessary
 //    val addPyPath = "__spark__.jar"
-    val pythonPath = mergePythonPaths(env.getOrElse("PYTHONPATH", ""), DatoSparkHelper.sparkPythonPath)
-//      if (env.contains("PYTHONPATH")) {
-//        env.get("PYTHONPATH") + java.io.File.pathSeparator + addPyPath
-//      } else {
-//        addPyPath
-//      }
-    // TODO: verify the python path does not need additional arguments
+    val pythonPath = mergePythonPaths(env.getOrElse("PYTHONPATH", ""),
+      DatoSparkHelper.sparkPythonPath)
     env.put("PYTHONPATH", pythonPath)
-    env.put("PYTHONHOME", "/usr/local")
-    println("\t" + env.toList.mkString("\n\t"))
+    env.put("PYTHONHOME", "/Library/Frameworks/Python.framework/Versions/2.7/")
+    // println("\t" + env.toList.mkString("\n\t"))
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
     // Luanch the graphlab create process
@@ -369,10 +367,11 @@ object GraphLabUtil {
    */
   def pySparkToSFrame(outputDir: String, prefix: String, additionalArgs: String, jrdd: JavaRDD[Array[Byte]]): String = {
     // Create folders
-//    val internalOutput: String =
-//      makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
+    val internalOutput: String =
+      makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
+    // println("Made dir: " + internalOutput)
     val args = additionalArgs +
-      s" --internal=$outputDir " +
+      s" --internal=$internalOutput " +
       s" --outputDir=$outputDir " +
       s" --prefix=$prefix"
     // pipe to Unity 
