@@ -26,6 +26,8 @@ import org.apache.spark.sql.Row
 
 import org.apache.hadoop.fs.{FileSystem, Path}
 
+import org.apache.spark.dato.DatoSparkHelper
+
 
 // REQUIRES JAVA 7.  
 // Consider switching to http://commons.apache.org/proper/commons-io/apidocs/org/apache/commons/io/IOUtils.html#toByteArray%28java.io.InputStream%29
@@ -92,6 +94,16 @@ object GraphLabUtil {
     val success = fs.mkdirs(outputDir)
     // TODO: Do something about when not success.
     outputDir.toString
+  }
+
+
+  /**
+   * Merge PYTHONPATHS with the appropriate separator. Ignores blank strings.
+   *
+   * Borrowed directly from PythonUtils.scala in pyspark
+   */
+  def mergePythonPaths(paths: String*): String = {
+    paths.filter(_ != "").mkString(File.pathSeparator)
   }
 
 
@@ -198,16 +210,17 @@ object GraphLabUtil {
     // Add the environmental variables to the process.
     val env = pb.environment()
     // Getting the current python path and adding a separator if necessary
-    // TODO: Make sure the separator is cross platform.
-    val addPyPath = "__spark__.jar"
-    val pythonPath = 
-      if (env.contains("PYTHONPATH")) { 
-        env.get("PYTHONPATH") + java.io.File.pathSeparator + addPyPath
-      } else { 
-        addPyPath 
-      }
+//    val addPyPath = "__spark__.jar"
+    val pythonPath = mergePythonPaths(env.getOrElse("PYTHONPATH", ""), DatoSparkHelper.sparkPythonPath)
+//      if (env.contains("PYTHONPATH")) {
+//        env.get("PYTHONPATH") + java.io.File.pathSeparator + addPyPath
+//      } else {
+//        addPyPath
+//      }
     // TODO: verify the python path does not need additional arguments
     env.put("PYTHONPATH", pythonPath)
+    env.put("PYTHONHOME", "/usr/local")
+    println("\t" + env.toList.mkString("\n\t"))
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
     // Luanch the graphlab create process
@@ -216,7 +229,7 @@ object GraphLabUtil {
     new Thread("GraphLab Unity Standard Error Reader") {
       override def run() {
         for (line <- Source.fromInputStream(proc.getErrorStream).getLines) {
-          System.err.println(line)
+          System.err.println("UNITY MSG: \t" + line)
         }
       }
     }.start()
@@ -380,7 +393,19 @@ object GraphLabUtil {
       (iter: Iterator[Row]) => new AutoBatchedPickler(iter.map(r => r.toSeq.toArray))
     }.toJavaRDD()
     // Construct the arguments to the graphlab unity process
-    val args = "--encoding=batch --type=schemardd "
+    // val args = "--encoding=batch --type=schemardd "
+    val args = "--encoding=batch --type=rdd "
+    pySparkToSFrame(outputDir, prefix, args, javaRDDofPickles)
+  }
+
+  def toSFrame(rdd: RDD[Int], outputDir: String, prefix: String): String = {
+    // Convert the dataframe into a Java rdd of pickles of batches of Rows
+    val javaRDDofPickles = rdd.mapPartitions {
+      (iter: Iterator[Int]) => new AutoBatchedPickler(iter)
+    }.toJavaRDD()
+    // Construct the arguments to the graphlab unity process
+    // val args = "--encoding=batch --type=schemardd "
+    val args = "--encoding=batch --type=rdd "
     pySparkToSFrame(outputDir, prefix, args, javaRDDofPickles)
   }
 
