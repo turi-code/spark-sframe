@@ -114,6 +114,24 @@ object GraphLabUtil {
 
 
   /**
+   * Compute the python home for this platform.
+   * @return
+   */
+  def getPythonHome(): String = {
+    var pythonHome: String = System.getenv().get("PYTHONHOME")
+    if (pythonHome == null) {
+      val platform = getPlatform()
+      if (platform == "mac") {
+        pythonHome = "/Library/Frameworks/Python.framework/Versions/Current"
+      } else if (platform == "linux") {
+        pythonHome = "/usr/local"
+      }
+    }
+    pythonHome
+  }
+
+
+  /**
    * Write an integer in native order.
    */
   def writeInt(x: Int, out: java.io.OutputStream) {
@@ -220,7 +238,10 @@ object GraphLabUtil {
     val pythonPath = mergePythonPaths(env.getOrElse("PYTHONPATH", ""),
       DatoSparkHelper.sparkPythonPath)
     env.put("PYTHONPATH", pythonPath)
-    env.put("PYTHONHOME", "/Library/Frameworks/Python.framework/Versions/2.7/")
+    val pythonHome = getPythonHome()
+    if (pythonHome != null) {
+      env.put("PYTHONHOME", pythonHome)
+    }
     // println("\t" + env.toList.mkString("\n\t"))
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
