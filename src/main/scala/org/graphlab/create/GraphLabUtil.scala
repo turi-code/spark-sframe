@@ -6,6 +6,9 @@ import java.nio.charset.Charset
 import java.util.{List => JList, ArrayList => JArrayList, Map => JMap, Collections}
 
 
+import org.apache.spark.api.python.SerDeUtil
+import org.apache.spark.sql.execution.EvaluatePython
+
 import scala.collection.JavaConversions._
 import scala.reflect.ClassTag
 import scala.util.Try
@@ -95,7 +98,7 @@ object GraphLabUtil {
     if (!success) {
       println("Error making " + outputDir.toString)
     }
-    // TODO: Do something about when not success.
+    // @todo: Do something about when not success.
     outputDir.toString
   }
 
@@ -365,7 +368,7 @@ object GraphLabUtil {
    * @param jrdd The java rdd corresponding to the pyspark rdd
    * @return the final filename of the output sframe.
    */
-  def pySparkToSFrame(outputDir: String, prefix: String, additionalArgs: String, jrdd: JavaRDD[Array[Byte]]): String = {
+  def pySparkToSFrame(jrdd: JavaRDD[Array[Byte]], outputDir: String, prefix: String, additionalArgs: String): String = {
     // Create folders
     val internalOutput: String =
       makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
@@ -384,28 +387,79 @@ object GraphLabUtil {
 
 
   /**
+   * Pickle a Spark DataFrame using the spark internals
+   *
+   * @param df
+   * @return
+   */
+  def pickleDataFrame(df: DataFrame): JavaRDD[Array[Byte]] = {
+    val fieldTypes = df.schema.fields.map(_.dataType)
+
+    // The first block of bytes in the dataframe will be in the format
+    //
+    // int: numCols
+    // loop {
+    //   int:   colName.length
+    //   bytes: colName (utf8)
+    //   int:   colType.length
+    //   bytes: colType text (utf8)
+    // }
+    val bos = new ByteArrayOutputStream()
+    writeInt(fieldTypes.length, bos)
+    val cs = Charset.forName("UTF-8")
+    for (f <- df.schema.fields) {
+      val nameBytes = f.name.getBytes(cs)
+      val typeBytes = f.dataType.typeName.getBytes(cs)
+      writeInt(nameBytes.length, bos)
+      bos.write(nameBytes)
+      writeInt(typeBytes.length, bos)
+      bos.write(typeBytes)
+    }
+    bos.flush()
+    // save the byte signature
+    val bytes = bos.toByteArray
+
+    // Convert the data frame into an RDD of byte arrays
+    df.rdd.mapPartitions { rowIterator =>
+      val arrayIterator = rowIterator.map(
+        row => row.toSeq.zip(fieldTypes).map {
+          case (field, fieldType) => EvaluatePython.toJava(field, fieldType)
+        }.toArray
+      )
+      Iterator(bytes) ++ new AutoBatchedPickler(arrayIterator)
+    }.toJavaRDD()
+  }
+
+
+  /**
    * Take a dataframe and convert it to an sframe
    */
   def toSFrame(df: DataFrame, outputDir: String, prefix: String): String = {
     // Convert the dataframe into a Java rdd of pickles of batches of Rows
-    val javaRDDofPickles = df.rdd.mapPartitions {
-      (iter: Iterator[Row]) => new AutoBatchedPickler(iter.map(r => r.toSeq.toArray))
-    }.toJavaRDD()
+    val javaRDDofPickles = pickleDataFrame(df)
     // Construct the arguments to the graphlab unity process
     // val args = "--encoding=batch --type=schemardd "
-    val args = "--encoding=batch --type=rdd "
-    pySparkToSFrame(outputDir, prefix, args, javaRDDofPickles)
+    val args = " --encoding=batch --type=schemardd "
+    pySparkToSFrame(javaRDDofPickles, outputDir, prefix, args)
   }
 
-  def toSFrame(rdd: RDD[Int], outputDir: String, prefix: String): String = {
-    // Convert the dataframe into a Java rdd of pickles of batches of Rows
-    val javaRDDofPickles = rdd.mapPartitions {
-      (iter: Iterator[Int]) => new AutoBatchedPickler(iter)
-    }.toJavaRDD()
+
+  /**
+   * This is a special implementation for processing RDDs of strings
+   *
+   * @param rdd
+   * @param outputDir
+   * @param prefix
+   * @return
+   */
+  def toSFrame(rdd: RDD[String], outputDir: String, prefix: String): String = {
+    val javaRDDofUTF8Strings: RDD[Array[Byte]] = rdd.mapPartitions { iter =>
+      val cs = Charset.forName("UTF-8")
+      iter.map(s => s.getBytes(cs))
+    }
     // Construct the arguments to the graphlab unity process
-    // val args = "--encoding=batch --type=schemardd "
-    val args = "--encoding=batch --type=rdd "
-    pySparkToSFrame(outputDir, prefix, args, javaRDDofPickles)
+    val args = "--encoding=utf8 --type=rdd "
+    pySparkToSFrame(javaRDDofUTF8Strings, outputDir, prefix, args)
   }
 
 
