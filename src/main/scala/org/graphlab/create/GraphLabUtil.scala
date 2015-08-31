@@ -259,6 +259,15 @@ object GraphLabUtil {
   }
 
 
+  def write_message(bytes: Array[Byte], out: OutputStream): Unit = {
+    writeInt(bytes.length, out)
+    out.write(bytes)
+  }
+
+  def write_end_of_file_message(out: OutputStream): Unit = {
+    writeInt(-1, out)
+  }
+
   /**
    * This function takes an iterator over arrays of bytes and executes
    * the unity binary
@@ -270,12 +279,8 @@ object GraphLabUtil {
     new Thread("GraphLab Unity toSFrame writer") {
       override def run() {
         val out = proc.getOutputStream
-        for(bytes <- iter) {
-          writeInt(bytes.length, out)
-          out.write(bytes)
-        }
-        // Send end of file
-        writeInt(-1, out)
+        iter.foreach(bytes => write_message(bytes, out))
+        write_end_of_file_message(out)
         out.close()
       }
     }.start()
@@ -354,7 +359,7 @@ object GraphLabUtil {
    *
    * TODO: make this function private. 
    */
-  def concat(args: String, sframes: Array[String]): String = {
+  def concat(sframes: Array[String], args: String): String = {
     // Launch the graphlab unity process
     val proc = launchProcess(UnityMode.Concat, args)
 
@@ -394,15 +399,17 @@ object GraphLabUtil {
     val internalOutput: String =
       makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
     // println("Made dir: " + internalOutput)
-    val args = additionalArgs +
-      s" --internal=$internalOutput " +
-      s" --outputDir=$outputDir " +
+    val argsTooSFrame = additionalArgs +
+      s" --outputDir=$internalOutput " +
       s" --prefix=$prefix"
     // pipe to Unity 
     val fnames = jrdd.rdd.mapPartitions (
-      (iter: Iterator[Array[Byte]]) => { toSFrameIterator(args, iter) }
+      (iter: Iterator[Array[Byte]]) => { toSFrameIterator(argsTooSFrame, iter) }
     ).collect()
-    val sframe_name = concat(args, fnames)
+    val argsConcat = additionalArgs +
+      s" --outputDir=$outputDir " +
+      s" --prefix=$prefix"
+    val sframe_name = concat(fnames, argsConcat)
     sframe_name
   }
 
@@ -427,10 +434,11 @@ object GraphLabUtil {
     // }
     val bos = new ByteArrayOutputStream()
     writeInt(fieldTypes.length, bos)
-    val cs = Charset.forName("UTF-8")
+    val utf8 = Charset.forName("UTF-8")
     for (f <- df.schema.fields) {
-      val nameBytes = f.name.getBytes(cs)
-      val typeBytes = f.dataType.typeName.getBytes(cs)
+      val nameBytes = f.name.getBytes(utf8)
+      val typeBytes = f.dataType.typeName.getBytes(utf8)
+      // val typeBytes = f.dataType.toString.getBytes(utf8)
       writeInt(nameBytes.length, bos)
       bos.write(nameBytes)
       writeInt(typeBytes.length, bos)
@@ -459,8 +467,7 @@ object GraphLabUtil {
     // Convert the dataframe into a Java rdd of pickles of batches of Rows
     val javaRDDofPickles = pickleDataFrame(df)
     // Construct the arguments to the graphlab unity process
-    // val args = "--encoding=batch --type=schemardd "
-    val args = " --encoding=batch --type=schemardd "
+    val args = " --encoding=batch --type=dataframe "
     pySparkToSFrame(javaRDDofPickles, outputDir, prefix, args)
   }
 
