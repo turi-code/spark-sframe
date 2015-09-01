@@ -422,7 +422,6 @@ object GraphLabUtil {
    */
   def pickleDataFrame(df: DataFrame): JavaRDD[Array[Byte]] = {
     val fieldTypes = df.schema.fields.map(_.dataType)
-
     // The first block of bytes in the dataframe will be in the format
     //
     // int: numCols
@@ -437,8 +436,8 @@ object GraphLabUtil {
     val utf8 = Charset.forName("UTF-8")
     for (f <- df.schema.fields) {
       val nameBytes = f.name.getBytes(utf8)
-      val typeBytes = f.dataType.typeName.getBytes(utf8)
-      // val typeBytes = f.dataType.toString.getBytes(utf8)
+      // val typeBytes = f.dataType.typeName.getBytes(utf8)
+      val typeBytes = f.dataType.simpleString.getBytes(utf8)
       writeInt(nameBytes.length, bos)
       bos.write(nameBytes)
       writeInt(typeBytes.length, bos)
@@ -452,7 +451,17 @@ object GraphLabUtil {
     df.rdd.mapPartitions { rowIterator =>
       val arrayIterator = rowIterator.map(
         row => row.toSeq.zip(fieldTypes).map {
-          case (field, fieldType) => EvaluatePython.toJava(field, fieldType)
+          case (field, fieldType) => {
+            val value = EvaluatePython.toJava(field, fieldType)
+            if (value.isInstanceOf[collection.mutable.WrappedArray[_]]) {
+              // This is a strange bug but Spark is wrapping its arrays in the java
+              // conversion which is breaking the razorvine serialization.
+              // by converting the wrapper array back to a standard array seralization works
+              value.asInstanceOf[collection.mutable.WrappedArray[_]].toArray
+            } else {
+              value
+            }
+          }
         }.toArray
       )
       Iterator(bytes) ++ new AutoBatchedPickler(arrayIterator)
@@ -486,7 +495,7 @@ object GraphLabUtil {
       iter.map(s => s.getBytes(cs))
     }
     // Construct the arguments to the graphlab unity process
-    val args = "--encoding=utf8 --type=rdd "
+    val args = " --encoding=utf8 --type=rdd "
     pySparkToSFrame(javaRDDofUTF8Strings, outputDir, prefix, args)
   }
 
