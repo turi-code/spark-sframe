@@ -6,6 +6,9 @@ import java.nio.charset.Charset
 import java.util.{List => JList, ArrayList => JArrayList, Map => JMap, Collections}
 
 
+import org.apache.spark.api.python.SerDeUtil
+import org.apache.spark.sql.execution.EvaluatePython
+
 import scala.collection.JavaConversions._
 import scala.reflect.ClassTag
 import scala.util.Try
@@ -92,7 +95,10 @@ object GraphLabUtil {
   def makeDir(outputDir: Path, sc: SparkContext): String = {
     val fs = FileSystem.get(sc.hadoopConfiguration)
     val success = fs.mkdirs(outputDir)
-    // TODO: Do something about when not success.
+    if (!success) {
+      println("Error making " + outputDir.toString)
+    }
+    // @todo: Do something about when not success.
     outputDir.toString
   }
 
@@ -104,6 +110,24 @@ object GraphLabUtil {
    */
   def mergePythonPaths(paths: String*): String = {
     paths.filter(_ != "").mkString(File.pathSeparator)
+  }
+
+
+  /**
+   * Compute the python home for this platform.
+   * @return
+   */
+  def getPythonHome(): String = {
+    var pythonHome: String = System.getenv().get("PYTHONHOME")
+    if (pythonHome == null) {
+      val platform = getPlatform()
+      if (platform == "mac") {
+        pythonHome = "/Library/Frameworks/Python.framework/Versions/Current"
+      } else if (platform == "linux") {
+        pythonHome = "/usr/local"
+      }
+    }
+    pythonHome
   }
 
 
@@ -211,16 +235,14 @@ object GraphLabUtil {
     val env = pb.environment()
     // Getting the current python path and adding a separator if necessary
 //    val addPyPath = "__spark__.jar"
-    val pythonPath = mergePythonPaths(env.getOrElse("PYTHONPATH", ""), DatoSparkHelper.sparkPythonPath)
-//      if (env.contains("PYTHONPATH")) {
-//        env.get("PYTHONPATH") + java.io.File.pathSeparator + addPyPath
-//      } else {
-//        addPyPath
-//      }
-    // TODO: verify the python path does not need additional arguments
+    val pythonPath = mergePythonPaths(env.getOrElse("PYTHONPATH", ""),
+      DatoSparkHelper.sparkPythonPath)
     env.put("PYTHONPATH", pythonPath)
-    env.put("PYTHONHOME", "/usr/local")
-    println("\t" + env.toList.mkString("\n\t"))
+    val pythonHome = getPythonHome()
+    if (pythonHome != null) {
+      env.put("PYTHONHOME", pythonHome)
+    }
+    // println("\t" + env.toList.mkString("\n\t"))
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
     // Luanch the graphlab create process
@@ -237,6 +259,15 @@ object GraphLabUtil {
   }
 
 
+  def write_message(bytes: Array[Byte], out: OutputStream): Unit = {
+    writeInt(bytes.length, out)
+    out.write(bytes)
+  }
+
+  def write_end_of_file_message(out: OutputStream): Unit = {
+    writeInt(-1, out)
+  }
+
   /**
    * This function takes an iterator over arrays of bytes and executes
    * the unity binary
@@ -248,12 +279,8 @@ object GraphLabUtil {
     new Thread("GraphLab Unity toSFrame writer") {
       override def run() {
         val out = proc.getOutputStream
-        for(bytes <- iter) {
-          writeInt(bytes.length, out)
-          out.write(bytes)
-        }
-        // Send end of file
-        writeInt(-1, out)
+        iter.foreach(bytes => write_message(bytes, out))
+        write_end_of_file_message(out)
         out.close()
       }
     }.start()
@@ -332,7 +359,7 @@ object GraphLabUtil {
    *
    * TODO: make this function private. 
    */
-  def concat(args: String, sframes: Array[String]): String = {
+  def concat(sframes: Array[String], args: String): String = {
     // Launch the graphlab unity process
     val proc = launchProcess(UnityMode.Concat, args)
 
@@ -367,20 +394,78 @@ object GraphLabUtil {
    * @param jrdd The java rdd corresponding to the pyspark rdd
    * @return the final filename of the output sframe.
    */
-  def pySparkToSFrame(outputDir: String, prefix: String, additionalArgs: String, jrdd: JavaRDD[Array[Byte]]): String = {
+  def pySparkToSFrame(jrdd: JavaRDD[Array[Byte]], outputDir: String, prefix: String, additionalArgs: String): String = {
     // Create folders
-//    val internalOutput: String =
-//      makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
-    val args = additionalArgs +
-      s" --internal=$outputDir " +
-      s" --outputDir=$outputDir " +
+    val internalOutput: String =
+      makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
+    // println("Made dir: " + internalOutput)
+    val argsTooSFrame = additionalArgs +
+      s" --outputDir=$internalOutput " +
       s" --prefix=$prefix"
     // pipe to Unity 
     val fnames = jrdd.rdd.mapPartitions (
-      (iter: Iterator[Array[Byte]]) => { toSFrameIterator(args, iter) }
+      (iter: Iterator[Array[Byte]]) => { toSFrameIterator(argsTooSFrame, iter) }
     ).collect()
-    val sframe_name = concat(args, fnames)
+    val argsConcat = additionalArgs +
+      s" --outputDir=$outputDir " +
+      s" --prefix=$prefix"
+    val sframe_name = concat(fnames, argsConcat)
     sframe_name
+  }
+
+
+  /**
+   * Pickle a Spark DataFrame using the spark internals
+   *
+   * @param df
+   * @return
+   */
+  def pickleDataFrame(df: DataFrame): JavaRDD[Array[Byte]] = {
+    val fieldTypes = df.schema.fields.map(_.dataType)
+    // The first block of bytes in the dataframe will be in the format
+    //
+    // int: numCols
+    // loop {
+    //   int:   colName.length
+    //   bytes: colName (utf8)
+    //   int:   colType.length
+    //   bytes: colType text (utf8)
+    // }
+    val bos = new ByteArrayOutputStream()
+    writeInt(fieldTypes.length, bos)
+    val utf8 = Charset.forName("UTF-8")
+    for (f <- df.schema.fields) {
+      val nameBytes = f.name.getBytes(utf8)
+      // val typeBytes = f.dataType.typeName.getBytes(utf8)
+      val typeBytes = f.dataType.simpleString.getBytes(utf8)
+      writeInt(nameBytes.length, bos)
+      bos.write(nameBytes)
+      writeInt(typeBytes.length, bos)
+      bos.write(typeBytes)
+    }
+    bos.flush()
+    // save the byte signature
+    val bytes = bos.toByteArray
+
+    // Convert the data frame into an RDD of byte arrays
+    df.rdd.mapPartitions { rowIterator =>
+      val arrayIterator = rowIterator.map(
+        row => row.toSeq.zip(fieldTypes).map {
+          case (field, fieldType) => {
+            val value = EvaluatePython.toJava(field, fieldType)
+            if (value.isInstanceOf[collection.mutable.WrappedArray[_]]) {
+              // This is a strange bug but Spark is wrapping its arrays in the java
+              // conversion which is breaking the razorvine serialization.
+              // by converting the wrapper array back to a standard array seralization works
+              value.asInstanceOf[collection.mutable.WrappedArray[_]].toArray
+            } else {
+              value
+            }
+          }
+        }.toArray
+      )
+      Iterator(bytes) ++ new AutoBatchedPickler(arrayIterator)
+    }.toJavaRDD()
   }
 
 
@@ -389,24 +474,29 @@ object GraphLabUtil {
    */
   def toSFrame(df: DataFrame, outputDir: String, prefix: String): String = {
     // Convert the dataframe into a Java rdd of pickles of batches of Rows
-    val javaRDDofPickles = df.rdd.mapPartitions {
-      (iter: Iterator[Row]) => new AutoBatchedPickler(iter.map(r => r.toSeq.toArray))
-    }.toJavaRDD()
+    val javaRDDofPickles = pickleDataFrame(df)
     // Construct the arguments to the graphlab unity process
-    // val args = "--encoding=batch --type=schemardd "
-    val args = "--encoding=batch --type=rdd "
-    pySparkToSFrame(outputDir, prefix, args, javaRDDofPickles)
+    val args = " --encoding=batch --type=dataframe "
+    pySparkToSFrame(javaRDDofPickles, outputDir, prefix, args)
   }
 
-  def toSFrame(rdd: RDD[Int], outputDir: String, prefix: String): String = {
-    // Convert the dataframe into a Java rdd of pickles of batches of Rows
-    val javaRDDofPickles = rdd.mapPartitions {
-      (iter: Iterator[Int]) => new AutoBatchedPickler(iter)
-    }.toJavaRDD()
+
+  /**
+   * This is a special implementation for processing RDDs of strings
+   *
+   * @param rdd
+   * @param outputDir
+   * @param prefix
+   * @return
+   */
+  def toSFrame(rdd: RDD[String], outputDir: String, prefix: String): String = {
+    val javaRDDofUTF8Strings: RDD[Array[Byte]] = rdd.mapPartitions { iter =>
+      val cs = Charset.forName("UTF-8")
+      iter.map(s => s.getBytes(cs))
+    }
     // Construct the arguments to the graphlab unity process
-    // val args = "--encoding=batch --type=schemardd "
-    val args = "--encoding=batch --type=rdd "
-    pySparkToSFrame(outputDir, prefix, args, javaRDDofPickles)
+    val args = " --encoding=utf8 --type=rdd "
+    pySparkToSFrame(javaRDDofUTF8Strings, outputDir, prefix, args)
   }
 
 
