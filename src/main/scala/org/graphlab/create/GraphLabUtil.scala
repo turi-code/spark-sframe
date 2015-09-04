@@ -512,7 +512,7 @@ object GraphLabUtil {
   def pySparkToRDD(sc: SparkContext, sframePath: String, numPartitions: Int, additionalArgs: String): JavaRDD[Array[Byte]] =  {
     // @todo we currently use the --outputDir option to encode the input dir (consider changing)
     val args = additionalArgs + s"--outputDir=$sframePath"
-    val pickledRDD = sc.parallelize(0 until numPartitions).mapPartitionsWithIndex {
+    val pickledRDD = sc.parallelize(0 until numPartitions,numPartitions).mapPartitionsWithIndex {
       (partId: Int, iter: Iterator[Int]) => toRDDIterator(partId, numPartitions, args)
     }
     pickledRDD.toJavaRDD()
