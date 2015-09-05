@@ -108,7 +108,7 @@ object GraphLabUtil {
    *
    * Borrowed directly from PythonUtils.scala in pyspark
    */
-  def mergePythonPaths(paths: String*): String = {
+  def mergePaths(paths: String*): String = {
     paths.filter(_ != "").mkString(File.pathSeparator)
   }
 
@@ -118,6 +118,7 @@ object GraphLabUtil {
    * @return
    */
   def getPythonHome(): String = {
+    return null
     var pythonHome: String = System.getenv().get("PYTHONHOME")
     if (pythonHome == null) {
       val platform = getPlatform()
@@ -211,6 +212,7 @@ object GraphLabUtil {
   def installPlatformBinaries() {
     // TODO: Install support dynamic libraries
     installBinary(getBinaryName())
+    installBinary("libhdfs.so")
   }
 
 
@@ -233,15 +235,28 @@ object GraphLabUtil {
     val pb = new java.lang.ProcessBuilder(fullArgList)
     // Add the environmental variables to the process.
     val env = pb.environment()
+    // val thisEnv = System.getenv
+    // thisEnv.foreach { case (variable, value) => env.put(variable, value) }
     // Getting the current python path and adding a separator if necessary
-//    val addPyPath = "__spark__.jar"
-    val pythonPath = mergePythonPaths(env.getOrElse("PYTHONPATH", ""),
+
+    val pythonPath = mergePaths(env.getOrElse("PYTHONPATH", ""),
       DatoSparkHelper.sparkPythonPath)
     env.put("PYTHONPATH", pythonPath)
-    val pythonHome = getPythonHome()
-    if (pythonHome != null) {
-      env.put("PYTHONHOME", pythonHome)
-    }
+
+    val sys = System.getProperties
+    val libPath = mergePaths(sys.getOrElse("sun.boot.library.path", ""),
+      sys.getOrElse("sun.boot.library.path", ""),
+      (sys.getOrElse("sun.boot.library.path", "") + File.separator + "server"),
+      sys.getOrElse("spark.executor.extraLibraryPath", ""))
+    env.put("LD_LIBRARY_PATH", libPath)
+    println("LD_LIBRARY_PATH " + libPath)
+    val classPath = sys.getOrElse("java.class.path", "")
+    env.put("CLASSPATH", classPath)
+
+    // val pythonHome = getPythonHome()
+    // if (pythonHome != null) {
+    //   env.put("PYTHONHOME", pythonHome)
+    // }
     // println("\t" + env.toList.mkString("\n\t"))
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
