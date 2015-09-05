@@ -216,6 +216,12 @@ object GraphLabUtil {
   }
 
 
+  def getHadoopNameNode(): String = {
+    val conf = new org.apache.hadoop.conf.Configuration()
+    conf.get("fs.default.name")
+  }
+
+
   /**
    * Build and launch a process with the appropriate arguments.
    *
