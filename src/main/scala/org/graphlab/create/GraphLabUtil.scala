@@ -39,6 +39,13 @@ import java.nio.file.Paths
 
 object GraphLabUtil {
 
+  /**
+   * Utility function needed to get access to GraphLabUtil object
+   * from GraphLab python interface.
+   */
+  def getUtil() = {
+    this
+  }
 
   /**
    * The types of unity mode supported and their corresponding
@@ -108,7 +115,7 @@ object GraphLabUtil {
    *
    * Borrowed directly from PythonUtils.scala in pyspark
    */
-  def mergePythonPaths(paths: String*): String = {
+  def mergePaths(paths: String*): String = {
     paths.filter(_ != "").mkString(File.pathSeparator)
   }
 
@@ -118,6 +125,7 @@ object GraphLabUtil {
    * @return
    */
   def getPythonHome(): String = {
+    return null
     var pythonHome: String = System.getenv().get("PYTHONHOME")
     if (pythonHome == null) {
       val platform = getPlatform()
@@ -211,6 +219,13 @@ object GraphLabUtil {
   def installPlatformBinaries() {
     // TODO: Install support dynamic libraries
     installBinary(getBinaryName())
+    installBinary("libhdfs.so")
+  }
+
+
+  def getHadoopNameNode(): String = {
+    val conf = new org.apache.hadoop.conf.Configuration()
+    conf.get("fs.default.name")
   }
 
 
@@ -233,15 +248,28 @@ object GraphLabUtil {
     val pb = new java.lang.ProcessBuilder(fullArgList)
     // Add the environmental variables to the process.
     val env = pb.environment()
+    // val thisEnv = System.getenv
+    // thisEnv.foreach { case (variable, value) => env.put(variable, value) }
     // Getting the current python path and adding a separator if necessary
-//    val addPyPath = "__spark__.jar"
-    val pythonPath = mergePythonPaths(env.getOrElse("PYTHONPATH", ""),
+
+    val pythonPath = mergePaths(env.getOrElse("PYTHONPATH", ""),
       DatoSparkHelper.sparkPythonPath)
     env.put("PYTHONPATH", pythonPath)
-    val pythonHome = getPythonHome()
-    if (pythonHome != null) {
-      env.put("PYTHONHOME", pythonHome)
-    }
+
+    val sys = System.getProperties
+    val libPath = mergePaths(sys.getOrElse("sun.boot.library.path", ""),
+      sys.getOrElse("sun.boot.library.path", ""),
+      (sys.getOrElse("sun.boot.library.path", "") + File.separator + "server"),
+      sys.getOrElse("spark.executor.extraLibraryPath", ""))
+    env.put("LD_LIBRARY_PATH", libPath)
+    println("LD_LIBRARY_PATH " + libPath)
+    val classPath = sys.getOrElse("java.class.path", "")
+    env.put("CLASSPATH", classPath)
+
+    // val pythonHome = getPythonHome()
+    // if (pythonHome != null) {
+    //   env.put("PYTHONHOME", pythonHome)
+    // }
     // println("\t" + env.toList.mkString("\n\t"))
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
@@ -512,7 +540,7 @@ object GraphLabUtil {
   def pySparkToRDD(sc: SparkContext, sframePath: String, numPartitions: Int, additionalArgs: String): JavaRDD[Array[Byte]] =  {
     // @todo we currently use the --outputDir option to encode the input dir (consider changing)
     val args = additionalArgs + s"--outputDir=$sframePath"
-    val pickledRDD = sc.parallelize(0 until numPartitions).mapPartitionsWithIndex {
+    val pickledRDD = sc.parallelize(0 until numPartitions,numPartitions).mapPartitionsWithIndex {
       (partId: Int, iter: Iterator[Int]) => toRDDIterator(partId, numPartitions, args)
     }
     pickledRDD.toJavaRDD()
@@ -555,231 +583,3 @@ object GraphLabUtil {
   }
 
 } // End of GraphLabUtil
-
-
-
-////// Old Code
-
-
-  // /**
-  //  * pipeToSFrames takes a command an array of serialized bytes representing 
-  //  * python objects to be converted into an SFrame.  This function then uses
-  //  * the command on each partition to launch a native GraphLab process which
-  //  * reads the bytes through standard in and outputs SFrames to a shared
-  //  * FileSystems (either HDFS or the local temporary directory).  
-  //  * This function then returns an array of filenames referencing each 
-  //  * of the constructed SFrames.
-  //  */
-  // def unityPipe(mode: UnityMode, args: List[String], jrdd: JavaRDD[Array[Byte]]): 
-  // JavaRDD[String] = {
-  //   val files = jrdd.rdd.mapPartitions {
-  //     (iter: Iterator[Array[Byte]]) => unityIterator(mode, args, iter, envVars.toMap)
-  //   }
-  //   files
-  // }
-
-
-  // class NotEqualsFileNameFilter(filterName: String) extends FilenameFilter {
-  //   def accept(dir: File, name: String): Boolean = {
-  //     !name.equals(filterName)
-  //   }
-  // }
-
-
-// def EscapeString(s: String) : String = { 
-//     val replace_char = '\u001F'
-//     val output = new StringBuilder()
-//     for (c: Char <- s) {
-//       if (c == '\\') { 
-//         output+'\\'
-//         output+c
-//       }
-//       else if (c == ',') { 
-//         output+'\\'
-//         output+replace_char
-//       }
-//       else if (c == '\n') { 
-//         output+'\\'
-//         output+'n'
-//       }
-//       else if (c == '\b') { 
-//         output+'\\'
-//         output+'b'
-//       }
-//       else if (c == '\t') { 
-//         output+'\\'
-//         output+'t'
-//       }
-//       else if (c == '\r') { 
-//         output+'\\'
-//         output+'r'
-//       }
-//       else if (c == '\'') { 
-//         output+'\\'
-//         output+'\''
-//       }
-//       else if (c == '\"') { 
-//         output+'\\'
-//         output+'\''
-//       }
-//       else {  
-//         output+c 
-//       }
-//     } 
-//     return output.toString
-//   } 
-
-  // object Mode extends Enumeration {
-  //      type Mode = Value
-  //      val EscapeChar, Normal = Value
-  // }
-
-  // def UnEscapeString(s: String) : String = { 
-  //      val replace_char = '\u001F'
-  //      val output = new StringBuilder()
-  //      import Mode._
-  //      var status = Normal
-  //      for (c: Char <- s) {
-  //        if (c == '\\' && status == Normal) { 
-  //           status = EscapeChar
-  //        }
-  //        else if (status == EscapeChar && c == replace_char) { 
-  //           status = Normal
-  //           output+','
-  //        }
-  //        else if (status == EscapeChar && c == 'n') { 
-  //           status = Normal
-  //           output+'\n'
-  //        }
-  //        else if (status == EscapeChar && c == 'r') { 
-  //           status = Normal
-  //           output+'\r'
-  //        }
-  //        else if (status == EscapeChar && c == 'b') { 
-  //           status = Normal
-  //           output+'\b'
-  //        }
-  //        else if (status == EscapeChar && c == 't') { 
-  //           status = Normal
-  //           output+'\t'
-  //        }
-  //        else if (status == EscapeChar && c == '\"') { 
-  //           status = Normal
-  //           output+'\"'
-  //        }
-  //        else if (status == EscapeChar && c == '\'') { 
-  //           status = Normal
-  //           output+'\''
-  //        }
-  //        else {  
-  //           output+c 
-  //           status = Normal
-  //        }
-  //      } 
-  //      return output.toString
-  // }
-
-  //   /**
-  //  * Test if the given byte array contains pickled data.
-  //  */
-  // def isPickled(bytes: Array[Byte]) = {
-  //   val unpickle = new Unpickler
-  //   var ret = true
-  //   try {
-  //     unpickle.load(bytes)
-  //   } catch {
-  //     _ => ret = false
-  //   }
-  //   return isp
-  // }
-
-
-    // // I assume batch encoding because the AutoBatchedPickler serializes 
-    // // blocks at a time?
-    // val toRDDArgs = makeArgs(outputDir = internalOutput, encoding = "batch", 
-    //   schema = schemaString, rddType = "schemardd")
-    // // pipe to Unity
-    // val fnames = unityPipe(UnityMode.ToSFrame, toRDDArgs, javaRDDofPickles, envVars).collect()
-    // // pipe to Unity
-    // val fnames = unityPipe(UnityMode.ToSFrame, toRDDArgs, javaRDDofPickles, envVars).coallese(1)
-    // // Pipe all the fnames through the worker
-    // val concatSFrameArgs = makeArgs(outputDir = outputDir, encoding = prefix, 
-    //   schema = schemaString, rddType = "schemardd")
-    
-    // new unityIterator(UnityMode.Concat, concatSFrameArgs, )
-
-
-
- //  def stringToByte(jRDD: JavaRDD[String]): JavaRDD[Array[Byte]] = { 
- //    jRDD.rdd.mapPartitions { iter =>
- //      iter.map { row =>
- //        row match {
- //            case str:String => new sun.misc.BASE64Decoder().decodeBuffer(str)
- //          //case str:String => UnEscapeString(str).toCharArray.map(_.toByte)
- //        } 
- //      }
-
- //    }
- //  }
- 
-   
- //  def byteToString(jRDD: JavaRDD[Array[Byte]]): JavaRDD[String] = { 
- //    jRDD.rdd.mapPartitions { iter =>
- //      iter.map { row =>
- //        row match {
- //          //case bytes:Array[Byte] => EscapeString(new String(bytes.map(_.toChar)))
- //           case bytes:Array[Byte] => new sun.misc.BASE64Encoder().encode(bytes).replaceAll("\n","")
- //        } 
- //      }
-
- //    }
- //  }
- 
- //  def unEscapeJavaRDD(jRDD: JavaRDD[Array[Byte]]): JavaRDD[Array[Byte]] = {
- //     //val jRDD = pythonToJava(rdd)
- //     jRDD.rdd.mapPartitions { iter =>
- //      val unpickle = new Unpickler
- //      val pickle = new Pickler
- //      iter.map { row =>
- //        row match {
- //           //case obj: String => obj.split(",").map(UnEscapeString(_))
- //           case everythingElse: Array[Byte] => pickle.dumps(unpickle.loads(everythingElse) match {
- //             case str: String => UnEscapeString(str) 
- //           })
- //        }
- //      }
-     
- //     }.toJavaRDD()
- //  } 
-   
- // def toJavaStringOfValues(jRDD: RDD[Any]): JavaRDD[String] = {
-
- //  jRDD.mapPartitions { iter =>
- //      iter.map { row =>
- //        row match {
- //          case obj: Seq[Any] => obj.map { item => 
- //            item match {
- //              case str: String => EscapeString(str)
- //              case others: Any => others
- //            }
- //          }.mkString(",")
- //        }   
- //      }   
- //    }.toJavaRDD()
- //  }
- //  def splitUnEscapeJavaRDD(jRDD: JavaRDD[Array[Byte]]): JavaRDD[Array[String]] = {
- //     jRDD.rdd.mapPartitions { iter =>
- //      val unpickle = new Unpickler
- //      val pickle = new Pickler
- //      iter.map { row =>
- //        unpickle.loads(row) match {
- //           //case obj: String => obj.split(",").map(UnEscapeString(_))
- //           //case everything: Array[Byte] => pickle.dumps(unpickle.loads(everythingElse) match {
- //             case str: String => str.split(",").map(UnEscapeString(_))
- //           //}
- //        }
- //      }
- //     }.toJavaRDD()
-
- //  }
-
