@@ -121,25 +121,6 @@ object GraphLabUtil {
 
 
   /**
-   * Compute the python home for this platform.
-   * @return
-   */
-  def getPythonHome(): String = {
-    return null
-    var pythonHome: String = System.getenv().get("PYTHONHOME")
-    if (pythonHome == null) {
-      val platform = getPlatform()
-      if (platform == "mac") {
-        pythonHome = "/Library/Frameworks/Python.framework/Versions/Current"
-      } else if (platform == "linux") {
-        pythonHome = "/usr/local"
-      }
-    }
-    pythonHome
-  }
-
-
-  /**
    * Write an integer in native order.
    */
   def writeInt(x: Int, out: java.io.OutputStream) {
@@ -159,25 +140,163 @@ object GraphLabUtil {
 
 
   /**
+   * Expand the current path into individual file paths.
+   */
+  def expandPath(inputPath: String, recursive: Boolean = false): Array[String] = {
+    val paths = inputPath.split(java.io.File.pathSeparator)
+    paths.filter(s => !s.isEmpty).flatMap { pathStr =>
+      val f = new java.io.File(pathStr)
+      if (f.isDirectory) {
+        val sep =
+          if (pathStr.last.toString != java.io.File.separator) {
+            java.io.File.separator
+          } else { "" }
+        if (recursive) {
+          f.list.flatMap { x =>
+            val newPath = pathStr + sep + x
+            expandPath(newPath, recursive)
+          }
+        } else {
+          f.list.map { x => pathStr + sep + x }
+        }
+      } else {
+        List(pathStr)
+      }
+    }
+  }
+
+
+  /**
    * Install the bundled binary in this jar stored in:
    *     src/main/deps/org/graphlab/create 
    * in the temporary directory location used by Spark.
    */
-  def installBinary(name: String) {
+  def installBinary(binName: String, as: String) {
     val rootDirectory = SparkFiles.getRootDirectory()
-    val outputPath = Paths.get(rootDirectory, name)
+    val outputPath = Paths.get(rootDirectory, as)
     this.synchronized {
       if (outputPath.toFile.exists() == false) {
-        println(s"Installing binary: $name")
+        println(s"Installing binary $binName as ${as}")
         println(s"\t to ${outputPath.toString()}")
         // Get the binary resources bundled in the jar file
         // Note that the binary must be located in:
         //   src/main/resources/org/graphlab/create/
-        val in = GraphLabUtil.getClass.getResourceAsStream(name)
+        val in = GraphLabUtil.getClass.getResourceAsStream(binName)
         Files.copy(in, outputPath)
         outputPath.toFile.setExecutable(true)
       }
     }
+  }
+
+
+  /**
+   * Install the bundled binary with the same 
+   * name as it is stored in the jar.
+   */
+  def installBinary(name: String) {
+    installBinary(name, name);
+  }
+
+
+  /**
+   * Get the current hadoop version
+   */
+  def hadoopVersion(): String = {
+    val conf = new org.apache.hadoop.conf.Configuration()
+    conf.get("hadoop.common.configuration.version")
+  }
+
+
+  /**
+   * Get the name for libhdfs for this platform
+   */
+  def getLibHDFSName(): String = {
+    val platform = getPlatform()
+    if (platform == "mac") {
+      "libhdfs.dylib"
+    } else if (platform == "linux") {
+      "libhdfs.so"
+    } else { // windows
+      "hdfs.dll"
+    }
+  }
+
+
+  /**
+   * Get the name for libjvm on this platform
+   */
+  def getLibJVMName(): String = {
+    val platform = getPlatform()
+    if (platform == "mac") {
+      "libjvm.dylib"
+    } else if (platform == "linux") {
+      "libjvm.so"
+    } else { // windows
+      "jvm.dll"
+    }
+  }
+
+
+  /**
+   * Install the correct platform specific libhdfs binary
+   */
+  def installLibHDFS() {
+    val libHDFSName = getLibHDFSName()
+    installBinary(libHDFSName)
+  }
+
+
+  /**
+   * Get the platform specific lib search path
+   */
+  def getLibSearchPath(): String = {
+    val sys = System.getProperties
+    // mergePaths(sys.getOrElse("sun.boot.library.path", ""),
+    //   sys.getOrElse("sun.boot.library.path", ""),
+    //   sys.getOrElse("java.library.path", ""),
+    //   (sys.getOrElse("sun.boot.library.path", "") + File.separator + "server"),
+    //   sys.getOrElse("spark.executor.extraLibraryPath", ""))
+    mergePaths(sys.getOrElse("sun.boot.library.path", ""),
+      sys.getOrElse("sun.boot.library.path", ""),
+      sys.getOrElse("java.library.path", ""),
+      (sys.getOrElse("sun.boot.library.path", "") + File.separator + "server"))
+  }
+
+
+  /**
+   * Get the local path for the given library name 
+   */ 
+  def getLibPath(libName: String): String = {
+    expandPath(getLibSearchPath, recursive=false)
+      .filter(_.contains(libName)).mkString(File.pathSeparator)
+  }
+
+
+  /**
+   * Get the library path for the spark_unity binary
+   */
+  def getUnityLibPath(): String = {
+    // currently we are installing our own libhdfs.so so we need to
+    // just find the libjvm path. In later releases we should consider
+    // resolving the path for libhdfs locally.
+    getLibSearchPath
+  }
+
+
+  /**
+   * Get the classpath being used by spark.  
+   */
+  def getClasspath(): String = {
+    val sys = System.getProperties
+    val classPath = sys.getOrElse("java.class.path", "")
+    classPath
+    // Originally I had assumed we needed the expanded classpath (as
+    // described by the JNI docs) however this does not appear to be
+    // the case perhaps if there are class path issues consider adding
+    // the additional code below
+
+    // + java.io.File.pathSeparator +
+    //  expandPath(classPath, recursive=true).mkString(java.io.File.pathSeparator)
   }
 
 
@@ -217,14 +336,24 @@ object GraphLabUtil {
    * working directory.
    */
   def installPlatformBinaries() {
-    // TODO: Install support dynamic libraries
     installBinary(getBinaryName())
-    installBinary("libhdfs.so")
   }
 
 
+  /**
+   * Get the default namenode for this hadoop cluster.
+   */
   def getHadoopNameNode(): String = {
     val conf = new org.apache.hadoop.conf.Configuration()
+    conf.get("fs.default.name")
+  }
+
+
+  /**
+   * Get the default namenode for this spark context
+   */
+  def getHadoopNameNode(sc: SparkContext): String = {
+    val conf = sc.hadoopConfiguration
     conf.get("fs.default.name")
   }
 
@@ -256,20 +385,20 @@ object GraphLabUtil {
       DatoSparkHelper.sparkPythonPath)
     env.put("PYTHONPATH", pythonPath)
 
-    val sys = System.getProperties
-    val libPath = mergePaths(sys.getOrElse("sun.boot.library.path", ""),
-      sys.getOrElse("sun.boot.library.path", ""),
-      (sys.getOrElse("sun.boot.library.path", "") + File.separator + "server"),
-      sys.getOrElse("spark.executor.extraLibraryPath", ""))
-    env.put("LD_LIBRARY_PATH", libPath)
+    val libPath = getUnityLibPath()
+    //@TODO: get platfomr LD_LIBRARY_PATH environment variable
     println("LD_LIBRARY_PATH " + libPath)
-    val classPath = sys.getOrElse("java.class.path", "")
-    env.put("CLASSPATH", classPath)
+    env.put("LD_LIBRARY_PATH", libPath)
+    try {
+      installLibHDFS()
+    } catch {
+      case e: Exception =>
+        System.err.println("Error installing native libhdfs relying on environment.")
+    }
+    val classpath = getClasspath
+    println("Classpath: " + classpath)
+    env.put("CLASSPATH", classpath)
 
-    // val pythonHome = getPythonHome()
-    // if (pythonHome != null) {
-    //   env.put("PYTHONHOME", pythonHome)
-    // }
     // println("\t" + env.toList.mkString("\n\t"))
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
@@ -441,6 +570,16 @@ object GraphLabUtil {
     sframe_name
   }
 
+
+  def saveDebugPickles(df: DataFrame, prefix: String) {
+    val blocks = pickleDataFrame(df).rdd.mapPartitions(iter => Iterator(iter.toArray)).collect()
+    for (i <- 0 until blocks.size) {
+      val f = new java.io.FileOutputStream(prefix + "_" + i.toString)
+      blocks(i).foreach(m => write_message(m, f))
+      write_end_of_file_message(f)
+      f.close()
+    }
+  }
 
   /**
    * Pickle a Spark DataFrame using the spark internals
