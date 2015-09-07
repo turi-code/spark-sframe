@@ -39,6 +39,13 @@ import java.nio.file.Paths
 
 object GraphLabUtil {
 
+  /**
+   * Utility function needed to get access to GraphLabUtil object
+   * from GraphLab python interface.
+   */
+  def getUtil() = {
+    this
+  }
 
   /**
    * The types of unity mode supported and their corresponding
@@ -576,4 +583,3 @@ object GraphLabUtil {
   }
 
 } // End of GraphLabUtil
-
