@@ -1,10 +1,10 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>org.graphlab.spark</groupId>
+  <groupId>org.graphlab.create</groupId>
   <artifactId>GraphLabSpark</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1-SNAPSHOT</version>
   <name>${project.artifactId}</name>
-  <description>GraphLab Create support for Spark</description>
+  <description>GraphLab Create SFrame Support for Spark</description>
   <inceptionYear>2015</inceptionYear>
 
 
@@ -30,6 +30,7 @@
       <version>1.4.1</version>
       <scope>provided</scope>
     </dependency>
+
     <dependency>
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-sql_2.10</artifactId>
@@ -70,12 +71,12 @@
       <scope>test</scope>
     </dependency>
     
-    <dependency>
-      <groupId>org.specs2</groupId>
-      <artifactId>specs2-core_${scala.compat.version}</artifactId>
-      <version>2.4.16</version>
-      <scope>test</scope>
-    </dependency>
+    <!--<dependency>-->
+      <!--<groupId>org.specs2</groupId>-->
+      <!--<artifactId>specs2-core_${scala.compat.version}</artifactId>-->
+      <!--<version>2.4.16</version>-->
+      <!--<scope>test</scope>-->
+    <!--</dependency>-->
 
     <dependency>
       <groupId>org.scalatest</groupId>

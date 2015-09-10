@@ -1,51 +1,34 @@
 package org.graphlab.create
 
 import java.io._
-import java.net._
 import java.nio.charset.Charset
-import java.util.{List => JList, ArrayList => JArrayList, Map => JMap, Collections}
-
-
-import org.apache.spark.api.python.SerDeUtil
+import net.razorvine.pickle.{Pickler, Unpickler}
+import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.spark.{SparkContext, _}
+import org.apache.spark.api.java.JavaRDD
+import org.apache.spark.dato.DatoSparkHelper
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.execution.EvaluatePython
 
 import scala.collection.JavaConversions._
-import scala.reflect.ClassTag
-import scala.util.Try
-import scala.io.Source
 import scala.collection.mutable
-
-import net.razorvine.pickle.{Pickler, Unpickler}
-
-
-import org.apache.spark._
-import org.apache.spark.SparkContext
-import org.apache.spark.api.java.{JavaSparkContext, JavaPairRDD, JavaRDD}
-import org.apache.spark.rdd.RDD
-import org.apache.spark.util.Utils
-import org.apache.commons.io.FileUtils
-import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.Row
-
-import org.apache.hadoop.fs.{FileSystem, Path}
-
-import org.apache.spark.dato.DatoSparkHelper
+import scala.io.Source
 
 
 // REQUIRES JAVA 7.  
 // Consider switching to http://commons.apache.org/proper/commons-io/apidocs/org/apache/commons/io/IOUtils.html#toByteArray%28java.io.InputStream%29
-import java.nio.file.Files
-import java.nio.file.Paths
+import java.nio.file.{Files, Paths}
 
 object GraphLabUtil {
+
 
   /**
    * Utility function needed to get access to GraphLabUtil object
    * from GraphLab python interface.
    */
-  def getUtil() = {
-    this
-  }
+  def getUtil() = this
+
 
   /**
    * The types of unity mode supported and their corresponding
@@ -111,7 +94,7 @@ object GraphLabUtil {
 
 
   /**
-   * Merge PYTHONPATHS with the appropriate separator. Ignores blank strings.
+   * Merge paths with the appropriate separator. Ignores blank strings.
    *
    * Borrowed directly from PythonUtils.scala in pyspark
    */
@@ -123,7 +106,7 @@ object GraphLabUtil {
   /**
    * Write an integer in native order.
    */
-  def writeInt(x: Int, out: java.io.OutputStream) {
+  def writeInt(out: java.io.OutputStream, x: Int) {
     out.write(x.toByte)
     out.write((x >> 8).toByte)
     out.write((x >> 16).toByte)
@@ -175,9 +158,9 @@ object GraphLabUtil {
     val rootDirectory = SparkFiles.getRootDirectory()
     val outputPath = Paths.get(rootDirectory, as)
     this.synchronized {
-      if (outputPath.toFile.exists() == false) {
-        println(s"Installing binary $binName as ${as}")
-        println(s"\t to ${outputPath.toString()}")
+      if (!outputPath.toFile.exists) {
+        println(s"Installing binary $binName as $as")
+        println(s"\t to ${outputPath.toString}")
         // Get the binary resources bundled in the jar file
         // Note that the binary must be located in:
         //   src/main/resources/org/graphlab/create/
@@ -194,15 +177,15 @@ object GraphLabUtil {
    * name as it is stored in the jar.
    */
   def installBinary(name: String) {
-    installBinary(name, name);
+    installBinary(name, name)
   }
 
 
   /**
    * Get the current hadoop version
    */
-  def hadoopVersion(): String = {
-    val conf = new org.apache.hadoop.conf.Configuration()
+  def getHadoopVersion: String = {
+    val conf = new org.apache.hadoop.conf.Configuration
     conf.get("hadoop.common.configuration.version")
   }
 
@@ -210,8 +193,8 @@ object GraphLabUtil {
   /**
    * Get the name for libhdfs for this platform
    */
-  def getLibHDFSName(): String = {
-    val platform = getPlatform()
+  def getLibHDFSName: String = {
+    val platform = getPlatform
     if (platform == "mac") {
       "libhdfs.dylib"
     } else if (platform == "linux") {
@@ -225,8 +208,8 @@ object GraphLabUtil {
   /**
    * Get the name for libjvm on this platform
    */
-  def getLibJVMName(): String = {
-    val platform = getPlatform()
+  def getLibJVMName: String = {
+    val platform = getPlatform
     if (platform == "mac") {
       "libjvm.dylib"
     } else if (platform == "linux") {
@@ -241,7 +224,7 @@ object GraphLabUtil {
    * Install the correct platform specific libhdfs binary
    */
   def installLibHDFS() {
-    val libHDFSName = getLibHDFSName()
+    val libHDFSName = getLibHDFSName
     installBinary(libHDFSName)
   }
 
@@ -249,17 +232,13 @@ object GraphLabUtil {
   /**
    * Get the platform specific lib search path
    */
-  def getLibSearchPath(): String = {
+  def getLibSearchPath: String = {
     val sys = System.getProperties
-    // mergePaths(sys.getOrElse("sun.boot.library.path", ""),
-    //   sys.getOrElse("sun.boot.library.path", ""),
-    //   sys.getOrElse("java.library.path", ""),
-    //   (sys.getOrElse("sun.boot.library.path", "") + File.separator + "server"),
-    //   sys.getOrElse("spark.executor.extraLibraryPath", ""))
     mergePaths(sys.getOrElse("sun.boot.library.path", ""),
       sys.getOrElse("sun.boot.library.path", ""),
       sys.getOrElse("java.library.path", ""),
-      (sys.getOrElse("sun.boot.library.path", "") + File.separator + "server"))
+      sys.getOrElse("sun.boot.library.path", "") + File.separator + "server")
+    //   sys.getOrElse("spark.executor.extraLibraryPath", "")
   }
 
 
@@ -275,7 +254,7 @@ object GraphLabUtil {
   /**
    * Get the library path for the spark_unity binary
    */
-  def getUnityLibPath(): String = {
+  def getUnityLibPath: String = {
     // currently we are installing our own libhdfs.so so we need to
     // just find the libjvm path. In later releases we should consider
     // resolving the path for libhdfs locally.
@@ -286,7 +265,7 @@ object GraphLabUtil {
   /**
    * Get the classpath being used by spark.  
    */
-  def getClasspath(): String = {
+  def getClasspath: String = {
     val sys = System.getProperties
     val classPath = sys.getOrElse("java.class.path", "")
     classPath
@@ -303,7 +282,7 @@ object GraphLabUtil {
   /**
    * Get the platform information as a simple string: mac, linux, windows
    */
-  def getPlatform(): String = {
+  def getPlatform: String = {
     val osName = System.getProperty("os.name")
     if (osName == "Mac OS X") {
       "mac"
@@ -326,8 +305,8 @@ object GraphLabUtil {
    *   -- Windows?: spark_unity_windows
    *
    */
-  def getBinaryName(): String = {
-    "spark_unity_" + getPlatform()
+  def getBinaryName: String = {
+    "spark_unity_" + getPlatform
   }
 
 
@@ -336,15 +315,15 @@ object GraphLabUtil {
    * working directory.
    */
   def installPlatformBinaries() {
-    installBinary(getBinaryName())
+    installBinary(getBinaryName)
   }
 
 
   /**
    * Get the default namenode for this hadoop cluster.
    */
-  def getHadoopNameNode(): String = {
-    val conf = new org.apache.hadoop.conf.Configuration()
+  def getHadoopNameNode: String = {
+    val conf = new org.apache.hadoop.conf.Configuration
     conf.get("fs.default.name")
   }
 
@@ -359,9 +338,24 @@ object GraphLabUtil {
 
 
   /**
+   * Get the environment link variable for this platform.
+   * @return
+   */
+  def getPlatformLinkVar = {
+    val platform = getPlatform
+    if (platform == "mac") {
+      "DYLD_FALLBACK_LIBRARY_PATH" // This is safer than DYLD_LIBRARY_PATH
+    } else if (platform == "linux") {
+      "LD_LIBRARY_PATH"
+    } else { // windows
+      "PATH"
+    }
+  }
+
+
+  /**
    * Build and launch a process with the appropriate arguments.
    *
-   * @todo: make private
    */
   def launchProcess(mode: UnityMode, args: String): Process = {
     // Install the binaries in the correct location:
@@ -370,13 +364,13 @@ object GraphLabUtil {
     // Construct the process builder with the full argument list 
     // including the unity binary name and unity mode
     // @todo it is odd that I needed the ./ before the filename to execute it with process builder
-    val launchName = "." + java.io.File.separator + getBinaryName().trim()
-    val fullArgList = (List(launchName, mode.toString) ++ args.split(" ")).map(_.trim).filter(_.nonEmpty).toList
+    val launchName = "." + java.io.File.separator + getBinaryName.trim()
+    val fullArgList = (List(launchName, mode.toString) ++ args.split(" ")).map(_.trim).filter(_.nonEmpty)
     // Display the command being run
     println("Launching Unity: \n\t" + fullArgList.mkString(" "))
     val pb = new java.lang.ProcessBuilder(fullArgList)
     // Add the environmental variables to the process.
-    val env = pb.environment()
+    val env = pb.environment
     // val thisEnv = System.getenv
     // thisEnv.foreach { case (variable, value) => env.put(variable, value) }
     // Getting the current python path and adding a separator if necessary
@@ -385,21 +379,20 @@ object GraphLabUtil {
       DatoSparkHelper.sparkPythonPath)
     env.put("PYTHONPATH", pythonPath)
 
-    val libPath = getUnityLibPath()
-    //@TODO: get platfomr LD_LIBRARY_PATH environment variable
-    println("LD_LIBRARY_PATH " + libPath)
-    env.put("LD_LIBRARY_PATH", libPath)
+    // set the ld_library_path
+    env.put(getPlatformLinkVar, getUnityLibPath)
+
     try {
       installLibHDFS()
     } catch {
       case e: Exception =>
         System.err.println("Error installing native libhdfs relying on environment.")
     }
+
     val classpath = getClasspath
     println("Classpath: " + classpath)
     env.put("CLASSPATH", classpath)
 
-    // println("\t" + env.toList.mkString("\n\t"))
     // Set the working directory 
     pb.directory(new File(SparkFiles.getRootDirectory()))
     // Luanch the graphlab create process
@@ -407,7 +400,7 @@ object GraphLabUtil {
     // Start a thread to print the process's stderr to ours
     new Thread("GraphLab Unity Standard Error Reader") {
       override def run() {
-        for (line <- Source.fromInputStream(proc.getErrorStream).getLines) {
+        for (line <- Source.fromInputStream(proc.getErrorStream).getLines()) {
           System.err.println("UNITY MSG: \t" + line)
         }
       }
@@ -416,28 +409,41 @@ object GraphLabUtil {
   }
 
 
-  def write_message(bytes: Array[Byte], out: OutputStream): Unit = {
-    writeInt(bytes.length, out)
+  /**
+   * Write a message in the binary format of:
+   *
+   *    signed 32bit int (message Length in bytes)
+   *    message bytes
+   *
+   *
+   */
+  def writeMessage(out: OutputStream, bytes: Array[Byte]): Unit = {
+    writeInt(out, bytes.length)
     out.write(bytes)
   }
 
-  def write_end_of_file_message(out: OutputStream): Unit = {
-    writeInt(-1, out)
+
+  /**
+   * Write the message encoding end of file (msglen = -1)
+   */
+  def writeEndOfFileMessage(out: OutputStream): Unit = {
+    writeInt(out, -1)
   }
+
 
   /**
    * This function takes an iterator over arrays of bytes and executes
    * the unity binary
    */
-  def toSFrameIterator(args: String, iter: Iterator[Array[Byte]]): Iterator[String] = {
+  private def toSFrameIterator(args: String, iter: Iterator[Array[Byte]]): Iterator[String] = {
     // Launch the unity process
     val proc = launchProcess(UnityMode.ToSFrame, args)
     // Start a thread to feed the process input from our parent's iterator
     new Thread("GraphLab Unity toSFrame writer") {
       override def run() {
         val out = proc.getOutputStream
-        iter.foreach(bytes => write_message(bytes, out))
-        write_end_of_file_message(out)
+        iter.foreach(bytes => writeMessage(out, bytes))
+        writeEndOfFileMessage(out)
         out.close()
       }
     }.start()
@@ -468,14 +474,12 @@ object GraphLabUtil {
    * This function creates an iterator that returns arrays of pickled bytes read from
    * the unity process.
    *
-   * @todo Make private.
-   *
    * @param partId the partition id of this iterator
    * @param numPart the number of partitions
    * @param args additional arguments constructed for the unity process
    * @return
    */
-  def toRDDIterator(partId: Int, numPart: Int, args: String): Iterator[Array[Byte]] = {
+  private def toRDDIterator(partId: Int, numPart: Int, args: String): Iterator[Array[Byte]] = {
     // Update the Args list with the extra information
     val finalArgs = args + s" --numPartitions=$numPart --partId=$partId "
     // Launch the unity process
@@ -483,7 +487,7 @@ object GraphLabUtil {
     // Create an iterator that reads bytes directly from the unity process
     new Iterator[Array[Byte]] {
       // Binary input stream from the process standard out
-      val in = proc.getInputStream()
+      val in = proc.getInputStream
       // The number of bytes to read next (may be 0 or more)
       var nextBytes = readInt(in)
       // Retunr the next array of bytes which could have length 0 or more.
@@ -514,15 +518,14 @@ object GraphLabUtil {
    * This function takes a collection of sframes and concatenates
    * them into a single sframe
    *
-   * TODO: make this function private. 
    */
-  def concat(sframes: Array[String], args: String): String = {
+  private def concat(sframes: Array[String], args: String): String = {
     // Launch the graphlab unity process
     val proc = launchProcess(UnityMode.Concat, args)
 
     // Write all the filenames to standard in for the child process
     val out = new PrintWriter(proc.getOutputStream)
-    sframes.foreach(out.println(_))
+    sframes.foreach(out.println)
     out.close()
 
     // wait for the child process to terminate
@@ -547,8 +550,8 @@ object GraphLabUtil {
    * and constructs an SFrame.
    *
    * @param outputDir The directory in which to store the SFrame
-   * @param args The list of command line arguments to the unity process
-   * @param jrdd The java rdd corresponding to the pyspark rdd
+   * @param prefix the filename prefix to use for the final SFRame
+   * @param additionalArgs any additional arguments that can be provided by python (e.g., data encoding)
    * @return the final filename of the output sframe.
    */
   def pySparkToSFrame(jrdd: JavaRDD[Array[Byte]], outputDir: String, prefix: String, additionalArgs: String): String = {
@@ -571,21 +574,26 @@ object GraphLabUtil {
   }
 
 
+  /**
+   * This debug operation is used to save the binary pickles passed into the spark_unity binary via standard in.
+   *
+   * @param df input dataframe to pickle
+   * @param prefix prefix of each file in which to save the debug binary pickles
+   */
   def saveDebugPickles(df: DataFrame, prefix: String) {
     val blocks = pickleDataFrame(df).rdd.mapPartitions(iter => Iterator(iter.toArray)).collect()
-    for (i <- 0 until blocks.size) {
+    for (i <- blocks.indices) {
       val f = new java.io.FileOutputStream(prefix + "_" + i.toString)
-      blocks(i).foreach(m => write_message(m, f))
-      write_end_of_file_message(f)
+      blocks(i).foreach(m => writeMessage(f, m))
+      writeEndOfFileMessage(f)
       f.close()
     }
   }
 
+
   /**
    * Pickle a Spark DataFrame using the spark internals
    *
-   * @param df
-   * @return
    */
   def pickleDataFrame(df: DataFrame): JavaRDD[Array[Byte]] = {
     val fieldTypes = df.schema.fields.map(_.dataType)
@@ -599,16 +607,14 @@ object GraphLabUtil {
     //   bytes: colType text (utf8)
     // }
     val bos = new ByteArrayOutputStream()
-    writeInt(fieldTypes.length, bos)
+    writeInt(bos, fieldTypes.length)
     val utf8 = Charset.forName("UTF-8")
     for (f <- df.schema.fields) {
       val nameBytes = f.name.getBytes(utf8)
       // val typeBytes = f.dataType.typeName.getBytes(utf8)
       val typeBytes = f.dataType.simpleString.getBytes(utf8)
-      writeInt(nameBytes.length, bos)
-      bos.write(nameBytes)
-      writeInt(typeBytes.length, bos)
-      bos.write(typeBytes)
+      writeMessage(bos, nameBytes)
+      writeMessage(bos, typeBytes)
     }
     bos.flush()
     // save the byte signature
@@ -618,7 +624,7 @@ object GraphLabUtil {
     df.rdd.mapPartitions { rowIterator =>
       val arrayIterator = rowIterator.map(
         row => row.toSeq.zip(fieldTypes).map {
-          case (field, fieldType) => {
+          case (field, fieldType) =>
             val value = EvaluatePython.toJava(field, fieldType)
             if (value.isInstanceOf[collection.mutable.WrappedArray[_]]) {
               // This is a strange bug but Spark is wrapping its arrays in the java
@@ -628,7 +634,6 @@ object GraphLabUtil {
             } else {
               value
             }
-          }
         }.toArray
       )
       Iterator(bytes) ++ new AutoBatchedPickler(arrayIterator)
@@ -651,10 +656,11 @@ object GraphLabUtil {
   /**
    * This is a special implementation for processing RDDs of strings
    *
-   * @param rdd
-   * @param outputDir
-   * @param prefix
-   * @return
+   * @param rdd the rdd of strings to save as an SFrame
+   * @param outputDir the output directory in which to save the SFrames
+   * @param prefix the file prefix to uses for the final SFrame files
+   *
+   * @return the filename of the final SFRame
    */
   def toSFrame(rdd: RDD[String], outputDir: String, prefix: String): String = {
     val javaRDDofUTF8Strings: RDD[Array[Byte]] = rdd.mapPartitions { iter =>
@@ -669,17 +675,11 @@ object GraphLabUtil {
 
   /**
    * Load an SFrame into a JavaRDD of Pickled objects.
-   *
-   *
-   * @param sc
-   * @param sframePath
-   * @param args
-   * @return
    */
   def pySparkToRDD(sc: SparkContext, sframePath: String, numPartitions: Int, additionalArgs: String): JavaRDD[Array[Byte]] =  {
     // @todo we currently use the --outputDir option to encode the input dir (consider changing)
     val args = additionalArgs + s"--outputDir=$sframePath"
-    val pickledRDD = sc.parallelize(0 until numPartitions,numPartitions).mapPartitionsWithIndex {
+    val pickledRDD = sc.parallelize(0 until numPartitions, numPartitions).mapPartitionsWithIndex {
       (partId: Int, iter: Iterator[Int]) => toRDDIterator(partId, numPartitions, args)
     }
     pickledRDD.toJavaRDD()
@@ -689,33 +689,29 @@ object GraphLabUtil {
   /**
    * Load an SFrame into an RDD of dictionaries
    *
-   * @todo convert objects into SparkSQL rows
+   * @todo convert objects into Dataframe rows
    *
-   * @param sc
-   * @param sframePath
-   * @return
+   * @param sc the spark context to use
+   * @param sframePath the path to the sframe index file
+   * @param numPartitions the number of partitions for the final RDD
    */
   def toRDD(sc: SparkContext, sframePath: String, numPartitions: Int): RDD[java.util.HashMap[String, _]] = {
     val args = "" // currently no special arguments required?
     // Construct an RDD of pickled objects
     val pickledRDD = pySparkToRDD(sc, sframePath, numPartitions, args).rdd
     // Unpickle the
-    val javaRDD = pickledRDD.mapPartitions { iter =>
+    pickledRDD.mapPartitions { iter =>
       val unpickle = new Unpickler
       iter.map(unpickle.loads(_).asInstanceOf[java.util.HashMap[String, _]])
     }
-    javaRDD
   }
 
 
   /**
    * Load an SFrame into an RDD of dictionaries
    *
-   * @todo convert objects into SparkSQL rows
-   *
-   * @param sc
-   * @param sframePath
-   * @return
+   * @param sc the spark context to use
+   * @param sframePath the path to the sframe index file
    */
   def toRDD(sc: SparkContext, sframePath: String): RDD[java.util.HashMap[String, _]] = {
     toRDD(sc, sframePath, sc.defaultParallelism)
