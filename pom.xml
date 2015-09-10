@@ -1,8 +1,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.graphlab.create</groupId>
-  <artifactId>GraphLabSpark</artifactId>
-  <version>0.1-SNAPSHOT</version>
+  <artifactId>spark_unity</artifactId>
+  <version>0.1</version>
   <name>${project.artifactId}</name>
   <description>GraphLab Create SFrame Support for Spark</description>
   <inceptionYear>2015</inceptionYear>
