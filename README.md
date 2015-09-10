@@ -10,6 +10,14 @@ build/mvn package
 This will both test and build the `spark-unity.jar` on your platform.
 
 ## PySpark Integration 
+
+### Setup the environment
+To use GraphLab Create within PySpark, you need to set the ``$SPARK_HOME`` and ``$PYTHONPATH`` environment variables on the driver. A common usage:
+```shell 
+export PYTHONPATH=$SPARK_HOME/python/:$SPARK_HOME/python/lib/py4j-0.8.2.1-src.zip:$PYTHONPATH
+export SPARK_HOME =<your-spark-home-dir>
+```
+
 ### Run PySpark
 ```bash
 cd $SPARK_HOME
@@ -57,11 +65,7 @@ The currently release requires Python 2.7, Spark 1.3 or later, and the `hadoop` 
 
 We also currently only support Mac and Linux platforms but will have Windows support soon. 
 
-# Recommended Settings for Spark Installation
+# Recommended Settings for Spark Installation on a Cluster
 We recommend downloading ``Pre-built for Hadoop 2.4 and later`` version of <a href="http://spark.apache.org/">Apache Spark</a>.
 
-Also you need to set ``$SPARK_HOME`` and ``$PYTHONPATH`` environment variables. A common usage:
-```shell 
-export PYTHONPATH=$SPARK_HOME/python/:$SPARK_HOME/python/lib/py4j-0.8.2.1-src.zip:$PYTHONPATH
-export SPARK_HOME =<your-spark-home-dir>
-```
+
