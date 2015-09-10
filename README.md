@@ -27,7 +27,7 @@ print sframe
 ### Run Spark Shell
 ```bash
 cd $SPARK_HOME
-bin/spark-shell --jars platform-spark/target/spark_unity.jar
+bin/spark-shell --jars platform-spark/target/spark_unity-0.1.jar
 ```
 ### Make an SFrame from an RDD
 ```scala
