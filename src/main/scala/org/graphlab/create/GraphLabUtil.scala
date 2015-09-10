@@ -441,7 +441,7 @@ object GraphLabUtil {
     // Start a thread to feed the process input from our parent's iterator
     new Thread("GraphLab Unity toSFrame writer") {
       override def run() {
-        val out = proc.getOutputStream
+        val out = new java.io.BufferedOutputStream(proc.getOutputStream, 1024*1024*16)
         iter.foreach(bytes => writeMessage(out, bytes))
         writeEndOfFileMessage(out)
         out.close()
@@ -487,7 +487,7 @@ object GraphLabUtil {
     // Create an iterator that reads bytes directly from the unity process
     new Iterator[Array[Byte]] {
       // Binary input stream from the process standard out
-      val in = proc.getInputStream
+      val in = new java.io.BufferedInputStream(proc.getInputStream, 1024*1024*16)
       // The number of bytes to read next (may be 0 or more)
       var nextBytes = readInt(in)
       // Retunr the next array of bytes which could have length 0 or more.
@@ -498,10 +498,18 @@ object GraphLabUtil {
         }
         // Allocate a buffer and read the bytes
         val buffer = new Array[Byte](nextBytes)
-        val bytesRead = in.read(buffer)
+        var bytesRead = 0
+        // Oddly need to loop on bytes read
+        while (bytesRead < nextBytes) {
+          val bytesJustRead = in.read(buffer, bytesRead, nextBytes - bytesRead)
+          if (bytesJustRead < 0) {
+            throw new Exception("Negative bytes read, error in reading SFrame")
+          }
+          bytesRead += bytesJustRead
+        }
         // Verify that we read enough bytes
         if (bytesRead != nextBytes) {
-          throw new Exception("Error in reading SFrame")
+          throw new Exception(s"Error in reading SFrame: bytes read $bytesRead not equal to $nextBytes")
         }
         // Get the length of the next frame of bytes
         nextBytes = readInt(in)
