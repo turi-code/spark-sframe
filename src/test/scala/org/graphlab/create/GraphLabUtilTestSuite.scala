@@ -29,11 +29,12 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
 
   var sc: SparkContext = null
   var sqlContext: SQLContext = null
-  Logger.getLogger("org.apache.spark").setLevel(Level.OFF)
 
 
 
   before {
+    Logger.getLogger("org.apache.spark").setLevel(Level.OFF)
+
     println("setup begun")
     val conf = new SparkConf().setAppName("test").setMaster("local")
     sc = new SparkContext(conf)
