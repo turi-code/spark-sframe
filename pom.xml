@@ -30,6 +30,7 @@
       <version>1.4.1</version>
       <scope>provided</scope>
     </dependency>
+
     <dependency>
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-sql_2.10</artifactId>
@@ -70,12 +71,12 @@
       <scope>test</scope>
     </dependency>
     
-    <dependency>
-      <groupId>org.specs2</groupId>
-      <artifactId>specs2-core_${scala.compat.version}</artifactId>
-      <version>2.4.16</version>
-      <scope>test</scope>
-    </dependency>
+    <!--<dependency>-->
+      <!--<groupId>org.specs2</groupId>-->
+      <!--<artifactId>specs2-core_${scala.compat.version}</artifactId>-->
+      <!--<version>2.4.16</version>-->
+      <!--<scope>test</scope>-->
+    <!--</dependency>-->
 
     <dependency>
       <groupId>org.scalatest</groupId>
