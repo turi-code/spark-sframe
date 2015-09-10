@@ -32,23 +32,36 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
   }
 
   test("save a dataframe of ints to an sframe") {
-    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x,x)))
+    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x)))
     val tmpDir = Files.createTempDirectory("sframe_test")
     val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "ints")
-//    val inrdd = GraphLabUtil.toRDD(sc, outputFname, 2)
-//    assertResult(df.count()) {
-//      inrdd.count()
-//    }
   }
 
-  test("pop is invoked on an empty stack") {
-
-    val emptyStack = new Stack[Int]
-    intercept[NoSuchElementException] {
-      emptyStack.pop()
-    }
-    assert(emptyStack.isEmpty)
+  test("save a dataframe of doubles to an sframe") {
+    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x.toDouble)))
+    val tmpDir = Files.createTempDirectory("sframe_test")
+    val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "ints")
   }
+
+  test("save a dataframe of floats to an sframe") {
+    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x.toDouble, x.toFloat)))
+    val tmpDir = Files.createTempDirectory("sframe_test")
+    val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "ints")
+  }
+
+  test("save a dataframe of strings to an sframe") {
+    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x.toDouble, x.toFloat, x.toString)))
+    val tmpDir = Files.createTempDirectory("sframe_test")
+    val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "ints")
+  }
+
+  test("save a dataframe of x,y (double array, double) pairs to an sframe") {
+    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (Array(1.0, 2.0, 3.0), 1.0)))
+    val tmpDir = Files.createTempDirectory("sframe_test")
+    val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "ints")
+  }
+
+
 
   after {
     sc.stop

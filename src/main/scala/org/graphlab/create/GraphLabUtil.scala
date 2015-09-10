@@ -390,7 +390,7 @@ object GraphLabUtil {
     }
 
     val classpath = getClasspath
-    println("Classpath: " + classpath)
+    // println("Classpath: " + classpath)
     env.put("CLASSPATH", classpath)
 
     // Set the working directory 
