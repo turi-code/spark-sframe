@@ -56,11 +56,11 @@
       </exclusions>
     </dependency>
     
-    <!-- <dependency> -->
-    <!--   <groupId>net.razorvine</groupId> -->
-    <!--   <artifactId>serpent</artifactId> -->
-    <!--   <version>1.12</version> -->
-    <!-- </dependency> -->
+    <dependency>
+      <groupId>net.razorvine</groupId>
+      <artifactId>serpent</artifactId>
+      <version>1.12</version>
+    </dependency>
 
     <!-- Test -->
     <dependency>

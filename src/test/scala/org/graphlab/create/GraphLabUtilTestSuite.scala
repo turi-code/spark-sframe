@@ -2,6 +2,7 @@ package org.graphlab.create
 
 import java.io.File
 import java.nio.file.Files
+import java.sql.Date
 
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.{SQLContext, Row}
@@ -12,6 +13,9 @@ import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import org.scalatest._
 import Matchers._
+import org.apache.log4j.Logger
+import org.apache.log4j.Level
+
 
 import scala.collection.mutable.Stack
 
@@ -25,6 +29,8 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
 
   var sc: SparkContext = null
   var sqlContext: SQLContext = null
+  Logger.getLogger("org.apache.spark").setLevel(Level.OFF)
+
 
 
   before {
@@ -33,6 +39,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     sc = new SparkContext(conf)
     sqlContext = new SQLContext(sc)
   }
+
 
   test("save a dataframe of ints to an sframe") {
     val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x)))
@@ -43,6 +50,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     assert(rdd.take(1)(0).size === 2, "Resulting rdd rows should be two dimensional")
   }
 
+
   test("save a dataframe of doubles to an sframe") {
     val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x.toDouble)))
     val tmpDir = Files.createTempDirectory("sframe_test")
@@ -51,6 +59,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     assert(rdd.count === df.count, "rdds are same dimension")
     assert(rdd.take(1)(0).size === 2, "Resulting rdd rows should be two dimensional")
   }
+
 
   test("save a dataframe of floats to an sframe") {
     val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x.toDouble, x.toFloat)))
@@ -61,6 +70,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     assert(rdd.take(1)(0).size === 3, "Resulting rdd rows should be two dimensional")
   }
 
+
   test("save a dataframe of strings to an sframe") {
     val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x.toDouble, x.toFloat, x.toString)))
     val tmpDir = Files.createTempDirectory("sframe_test")
@@ -69,6 +79,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     assert(rdd.count === df.count, "rdds are same dimension")
     assert(rdd.take(1)(0).size === 4, "Resulting rdd rows should be two dimensional")
   }
+
 
   test("save a dataframe of x,y (double array, double) pairs to an sframe") {
     val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (Array(1.0, 2.0, 3.0), 1.0)))
@@ -79,6 +90,18 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     assert(rdd.take(1)(0).size === 2, "Resulting rdd rows should be two dimensional")
     rdd.take(1)(0).get("_1").asInstanceOf[Array[Double]] should equal (Array(1.0, 2.0, 3.0))
   }
+
+
+//  test("save a dataframe of x,y (double array, double, datetime) pairs to an sframe") {
+//    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000)
+//      .map(x => (Array(1.0, 2.0, 3.0), 1.0, new Date(0))))
+//    val tmpDir = Files.createTempDirectory("sframe_test")
+//    val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "test")
+//    val rdd = GraphLabUtil.toRDD(sc, outputFname).cache
+//    assert(rdd.count === df.count, "rdds are same dimension")
+//    assert(rdd.take(1)(0).size === 3, "Resulting rdd rows should be two dimensional")
+//    rdd.take(1)(0).get("_1").asInstanceOf[Array[Double]] should equal (Array(1.0, 2.0, 3.0))
+//  }
 
 
   test("Checking fields names") {
@@ -98,6 +121,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
         "Name not equal to age")
     }
   }
+
 
   test("Checking RDD of strings") {
     val x = sc.parallelize(0 to 1000).map(x => x.toString)
