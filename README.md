@@ -27,7 +27,7 @@ print sframe
 ### Run Spark Shell
 ```bash
 cd $SPARK_HOME
-bin/spark-shell --jars platform-spark/target/GraphLabSpark-0.1-SNAPSHOT.jar
+bin/spark-shell --jars platform-spark/target/spark_unity.jar
 ```
 ### Make an SFrame from an RDD
 ```scala
@@ -48,3 +48,12 @@ val newRDD = GraphLabUtil.toRDD(sc, "/tmp/graphlab_testing/test.frame_idx")
 The currently release requires Python 2.7, Spark 1.3 or later, and the `hadoop` binary must be within the `PATH` of the driver when running on a cluster or interacting with `Hadoop` (e.g., you should be able to run `hadoop classpath`).
 
 We also currently only support Mac and Linux platforms but will have Windows support soon. 
+
+# Recommended Settings for Spark Installation
+We recommend downloading ``Pre-built for Hadoop 2.4 and later`` version of <a href="http://spark.apache.org/">Apache Spark</a>.
+
+Also you need to set ``$SPARK_HOME`` and ``$PYTHONPATH`` environment variables. A common usage:
+```shell 
+export PYTHONPATH=$SPARK_HOME/python/:$SPARK_HOME/python/lib/py4j-0.8.2.1-src.zip:$PYTHONPATH
+export SPARK_HOME =<your-spark-home-dir>
+```
