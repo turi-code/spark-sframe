@@ -1,6 +1,14 @@
 # Spark Unity Codebase
 This project contains the code to interact with the GraphLab Create open-source project from within Apache Spark.  Currently, the jar created by this project is included in the GraphLab Create python egg to enable translation between Apache Spark Dataframes and GraphLab Create SFrames.  Users can also use this project in the scala spark shell to export Dataframes as SFrames.
 
+## Building Platform Spark
+To build the `spark-unity.jar` all you need is to have the java jdk installed on your platform and run our pre-bundled `mvn`:
+```bash
+cd platform-spark
+build/mvn package
+```
+This will both test and build the `spark-unity.jar` on your platform.
+
 ## PySpark Integration 
 ### Run PySpark
 ```bash
