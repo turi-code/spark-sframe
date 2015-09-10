@@ -6,5 +6,5 @@ path=src/main/resources/org/graphlab/create/spark_unity_linux
 chrpath -d $path
 
 # strip symbols to reduce filesize
-strip -s $path
+strip -S $path
 
