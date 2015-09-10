@@ -10,8 +10,16 @@ bin/pyspark
 ### Make an SFrame from an RDD
 ```python
 from graphlab import SFrame
-rdd = sc.parallelize(range(1, 100)).map(lambda x: (x, str(x)))
+rdd = sc.parallelize([(x,str(x), "hello") for x in range(0,5)])
 sframe = SFrame.from_rdd(rdd, sc)
+print sframe
+```
+### Make an SFrame from a Dataframe (preferred)
+```python
+from graphlab import SFrame
+rdd = sc.parallelize([(x,str(x), "hello") for x in range(0,5)])
+df = sql.createDataFrame(rdd)
+sframe = SFrame.from_rdd(df, sc)
 print sframe
 ```
 
@@ -19,7 +27,7 @@ print sframe
 ### Run Spark Shell
 ```bash
 cd $SPARK_HOME
-bin/spark-shell
+bin/spark-shell --jars platform-spark/target/GraphLabSpark-0.1-SNAPSHOT.jar
 ```
 ### Make an SFrame from an RDD
 ```scala
@@ -30,3 +38,13 @@ val prefix = "test"
 val sframeFileName = GraphLabUtil.toSFrame(df, outputDir, prefix)
 print sframeFileName
 ```
+### Make an RDD from an SFrame
+```scala
+import org.graphlab.create.GraphLabUtil
+val newRDD = GraphLabUtil.toRDD(sc, "/tmp/graphlab_testing/test.frame_idx")
+```
+
+# Requirements and Caveats
+The currently release requires Python 2.7, Spark 1.3 or later, and the `hadoop` binary must be within the `PATH` of the driver when running on a cluster or interacting with `Hadoop` (e.g., you should be able to run `hadoop classpath`).
+
+We also currently only support Mac and Linux platforms but will have Windows support soon. 
