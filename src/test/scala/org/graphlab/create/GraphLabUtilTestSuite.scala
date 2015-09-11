@@ -93,16 +93,16 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
   }
 
 
-//  test("save a dataframe of x,y (double array, double, datetime) pairs to an sframe") {
-//    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000)
-//      .map(x => (Array(1.0, 2.0, 3.0), 1.0, new Date(0))))
-//    val tmpDir = Files.createTempDirectory("sframe_test")
-//    val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "test")
-//    val rdd = GraphLabUtil.toRDD(sc, outputFname).cache
-//    assert(rdd.count === df.count, "rdds are same dimension")
-//    assert(rdd.take(1)(0).size === 3, "Resulting rdd rows should be two dimensional")
-//    rdd.take(1)(0).get("_1").asInstanceOf[Array[Double]] should equal (Array(1.0, 2.0, 3.0))
-//  }
+  test("save a dataframe of x,y (double array, double, datetime) pairs to an sframe") {
+    val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000)
+      .map(x => (Array(1.0, 2.0, 3.0), 1.0, new Date(0))))
+    val tmpDir = Files.createTempDirectory("sframe_test")
+    val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "test")
+    val rdd = GraphLabUtil.toRDD(sc, outputFname).cache
+    assert(rdd.count === df.count, "rdds are same dimension")
+    assert(rdd.take(1)(0).size === 3, "Resulting rdd rows should be two dimensional")
+    rdd.take(1)(0).get("_1").asInstanceOf[Array[Double]] should equal (Array(1.0, 2.0, 3.0))
+  }
 
 
   test("Checking fields names") {
