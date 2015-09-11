@@ -224,8 +224,14 @@ object GraphLabUtil {
    * Install the correct platform specific libhdfs binary
    */
   def installLibHDFS() {
-    val libHDFSName = getLibHDFSName
-    installBinary(libHDFSName)
+    val platform = getPlatform
+    if (platform == "mac") {
+      installBinary("libhdfs.dylib", as="libhdfs.so")
+    } else if (platform == "linux") {
+      installBinary("libhdfs.so", as="libhdfs.so")
+    } else { // windows
+      installBinary("hdfs.dll", as="hdfs.dll")
+    }
   }
 
 
