@@ -48,7 +48,7 @@ bin/spark-shell --jars platform-spark/target/spark_unity-0.1.jar
 ### Make an SFrame from an RDD
 ```scala
 import org.graphlab.create.GraphLabUtil
-df = sc.parallelize(range(1, 100)).toDF // Must be a dataframe
+var df = sc.parallelize(Array(1,2,3)).toDF // Must be a dataframe
 val outputDir = "/tmp/graphlab_testing" // Must be an HDFS path unless running in local mode
 val prefix = "test"
 val sframeFileName = GraphLabUtil.toSFrame(df, outputDir, prefix)
