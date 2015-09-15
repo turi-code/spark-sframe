@@ -18,11 +18,27 @@ export PYTHONPATH=$SPARK_HOME/python/:$SPARK_HOME/python/lib/py4j-0.8.2.1-src.zi
 export SPARK_HOME =<your-spark-home-dir>
 ```
 
-### Run PySpark
+### Run from the PySpark Python Shell
 ```bash
 cd $SPARK_HOME
 bin/pyspark
 ```
+
+### Run from a standard Python Shell
+Make sure you have exported the `PYTHONPATH` and `SPARK_HOME` environment variables.  Then run (for example):
+```bash
+ipython
+```
+Then you need to start spark:
+```python
+from pyspark import SparkContext
+from pyspark.sql import SQLContext
+# Launch spark by creating a spark context
+sc = SparkContext()
+# Create a SparkSQL context to manage dataframe schema information.
+sqlContext = SQLContext(sc)
+```
+
 ### Make an SFrame from an RDD
 ```python
 from graphlab import SFrame
