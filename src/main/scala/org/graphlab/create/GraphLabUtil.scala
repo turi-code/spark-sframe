@@ -4,11 +4,12 @@ import java.io._
 import java.nio.charset.Charset
 import net.razorvine.pickle.{Pickler, Unpickler}
 import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.spark.sql.types.DataType
 import org.apache.spark.{SparkContext, _}
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.dato.DatoSparkHelper
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.{Row, DataFrame}
 import org.apache.spark.sql.execution.EvaluatePython
 
 import scala.collection.JavaConversions._
@@ -610,7 +611,7 @@ object GraphLabUtil {
    *
    */
   def pickleDataFrame(df: DataFrame): JavaRDD[Array[Byte]] = {
-    val fieldTypes = df.schema.fields.map(_.dataType)
+    val fieldTypes: Array[DataType] = df.schema.fields.map(_.dataType)
     // The first block of bytes in the dataframe will be in the format
     //
     // int: numCols
@@ -632,26 +633,41 @@ object GraphLabUtil {
     }
     bos.flush()
     // save the byte signature
-    val bytes = bos.toByteArray
+    val headerBytes = bos.toByteArray
 
     // Convert the data frame into an RDD of byte arrays
-    df.rdd.mapPartitions { rowIterator =>
-      val arrayIterator = rowIterator.map(
-        row => row.toSeq.zip(fieldTypes).map {
-          case (field, fieldType) =>
-            val value = EvaluatePython.toJava(field, fieldType)
-            if (value.isInstanceOf[collection.mutable.WrappedArray[_]]) {
-              // This is a strange bug but Spark is wrapping its arrays in the java
-              // conversion which is breaking the razorvine serialization.
-              // by converting the wrapper array back to a standard array seralization works
-              value.asInstanceOf[collection.mutable.WrappedArray[_]].toArray
-            } else {
-              value
-            }
-        }.toArray
-      )
-      Iterator(bytes) ++ new AutoBatchedPickler(arrayIterator)
-    }.toJavaRDD()
+    df.rdd.mapPartitions ( rowIteratorUtil(_, fieldTypes, headerBytes) ).toJavaRDD()
+  }
+
+  /**
+   * The row iterator function has been pulled out of the above function to eliminate deep nested closures.
+   * This oddly resolves an issue where the classloader may not capture all the closures when loading GraphLabUtil
+   * through pyspark.
+   *
+   * see issue https://github.com/dato-code/documents/issues/2915
+   *
+   * @param riter
+   * @param fieldTypes
+   * @param header
+   * @return
+   */
+  private def rowIteratorUtil(riter: Iterator[Row], fieldTypes: Array[DataType], header: Array[Byte]) = {
+    val arrayIterator = riter.map( row =>
+      row.toSeq.zip(fieldTypes).map { entry =>
+        val field = entry._1
+        val fieldType = entry._2
+        val value = EvaluatePython.toJava(field, fieldType)
+        if (value.isInstanceOf[collection.mutable.WrappedArray[_]]) {
+          // This is a strange bug but Spark is wrapping its arrays in the java
+          // conversion which is breaking the razorvine serialization.
+          // by converting the wrapper array back to a standard array seralization works
+          value.asInstanceOf[collection.mutable.WrappedArray[_]].toArray
+        } else {
+          value
+        }
+      }.toArray
+    )
+    Iterator(header) ++ new AutoBatchedPickler(arrayIterator)
   }
 
 
