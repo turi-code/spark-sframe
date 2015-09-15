@@ -5,8 +5,7 @@ f=src/main/resources/org/graphlab/create/spark_unity_mac
 
 strip -S $f
 
-install_name_tool -change @rpath/libpython2.7.dylib /System/Library/Frameworks/Python.framework/Versions/2.7/Python $f 
-
+install_name_tool -change @rpath/libpython2.7.dylib Python.framework/Versions/Current/Python $f 
 
 
 # # Remove data-dev rpath additions:
