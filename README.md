@@ -68,7 +68,7 @@ var df = sc.parallelize(Array(1,2,3)).toDF // Must be a dataframe
 val outputDir = "/tmp/graphlab_testing" // Must be an HDFS path unless running in local mode
 val prefix = "test"
 val sframeFileName = GraphLabUtil.toSFrame(df, outputDir, prefix)
-print sframeFileName
+println(sframeFileName)
 ```
 ### Make an RDD from an SFrame
 ```scala
