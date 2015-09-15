@@ -36,7 +36,7 @@ from pyspark.sql import SQLContext
 # Launch spark by creating a spark context
 sc = SparkContext()
 # Create a SparkSQL context to manage dataframe schema information.
-sqlContext = SQLContext(sc)
+sql = SQLContext(sc)
 ```
 
 ### Make an SFrame from an RDD
