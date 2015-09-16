@@ -83,14 +83,20 @@ object GraphLabUtil {
    * This funciton recursively creates the entire path:
    *  mkdir -p /way/too/long/path/name
    */
-  def makeDir(outputDir: Path, sc: SparkContext): String = {
-    val fs = FileSystem.get(sc.hadoopConfiguration)
-    val success = fs.mkdirs(outputDir)
-    if (!success) {
-      println("Error making " + outputDir.toString)
+  def makeDir(outputDir: String, subDir: String, sc: SparkContext): String = {
+    if (outputDir.substring(0,7) == "hdfs://") { // this is an hdfs path to be created
+      val path = new org.apache.hadoop.fs.Path(outputDir, subDir)
+      val fs = FileSystem.get(sc.hadoopConfiguration)
+      val success = fs.mkdirs(path)
+      if (!success) {
+        println("Error making " + outputDir.toString)
+      }
+      path.toString
+    } else { // assume this is a local path
+      val dir = new File(outputDir, subDir)
+      dir.mkdirs()
+      dir.getAbsolutePath
     }
-    // @todo: Do something about when not success.
-    outputDir.toString
   }
 
 
@@ -572,7 +578,7 @@ object GraphLabUtil {
   def pySparkToSFrame(jrdd: JavaRDD[Array[Byte]], outputDir: String, prefix: String, additionalArgs: String): String = {
     // Create folders
     val internalOutput: String =
-      makeDir(new org.apache.hadoop.fs.Path(outputDir, "internal"), jrdd.sparkContext)
+      makeDir(outputDir, "internal", jrdd.sparkContext)
     // println("Made dir: " + internalOutput)
     val argsTooSFrame = additionalArgs +
       s" --outputDir=$internalOutput " +
