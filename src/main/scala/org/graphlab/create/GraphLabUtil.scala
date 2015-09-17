@@ -496,7 +496,7 @@ object GraphLabUtil {
         } else {
           val exitStatus = proc.waitFor()
           if (exitStatus != 0) {
-            throw new Exception("Graphlab Unity toSFrame processes exit status " + exitStatus)
+            throw new Exception("GraphLab Unity toSFrame processes exit status " + exitStatus)
           }
           false
         }
