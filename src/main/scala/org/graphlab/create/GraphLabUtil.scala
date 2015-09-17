@@ -178,8 +178,8 @@ object GraphLabUtil {
     val outputPath = Paths.get(rootDirectory, as)
     this.synchronized {
       if (!outputPath.toFile.exists) {
-        println(s"Installing binary $binName as $as")
-        println(s"\t to ${outputPath.toString}")
+        //println(s"Installing binary $binName as $as")
+        //println(s"\t to ${outputPath.toString}")
         // Get the binary resources bundled in the jar file
         // Note that the binary must be located in:
         //   src/main/resources/org/graphlab/create/
@@ -401,7 +401,7 @@ object GraphLabUtil {
     val launchName = "." + java.io.File.separator + getBinaryName.trim()
     val fullArgList = (List(launchName, mode.toString) ++ args.split(" ")).map(_.trim).filter(_.nonEmpty)
     // Display the command being run
-    println("Launching Unity: \n\t" + fullArgList.mkString(" "))
+    //println("Launching Unity: \n\t" + fullArgList.mkString(" "))
     val pb = new java.lang.ProcessBuilder(fullArgList)
     // Add the environmental variables to the process.
     val env = pb.environment
@@ -434,9 +434,9 @@ object GraphLabUtil {
     // Start a thread to print the process's stderr to ours
     new Thread("GraphLab Unity Standard Error Reader") {
       override def run() {
-        for (line <- Source.fromInputStream(proc.getErrorStream).getLines()) {
-          System.err.println("UNITY MSG: \t" + line)
-        }
+        //for (line <- Source.fromInputStream(proc.getErrorStream).getLines()) {
+        //  System.err.println("UNITY MSG: \t" + line)
+        //}
       }
     }.start()
     proc
@@ -469,7 +469,7 @@ object GraphLabUtil {
    * This function takes an iterator over arrays of bytes and executes
    * the unity binary
    */
-  private def toSFrameIterator(args: String, iter: Iterator[Array[Byte]]): Iterator[String] = {
+  def toSFrameIterator(args: String, iter: Iterator[Array[Byte]]): Iterator[String] = {
     // Launch the unity process
     val proc = launchProcess(UnityMode.ToSFrame, args)
     // Start a thread to feed the process input from our parent's iterator
@@ -513,7 +513,7 @@ object GraphLabUtil {
    * @param args additional arguments constructed for the unity process
    * @return
    */
-  private def toRDDIterator(partId: Int, numPart: Int, args: String): Iterator[Array[Byte]] = {
+  def toRDDIterator(partId: Int, numPart: Int, args: String): Iterator[Array[Byte]] = {
     // Update the Args list with the extra information
     val finalArgs = args + s" --numPartitions=$numPart --partId=$partId "
     // Launch the unity process
@@ -561,7 +561,7 @@ object GraphLabUtil {
    * them into a single sframe
    *
    */
-  private def concat(sframes: Array[String], args: String): String = {
+  def concat(sframes: Array[String], args: String): String = {
     // Launch the graphlab unity process
     val proc = launchProcess(UnityMode.Concat, args)
 
@@ -678,7 +678,7 @@ object GraphLabUtil {
    * @param header
    * @return
    */
-  private def rowIteratorUtil(riter: Iterator[Row], fieldTypes: Array[DataType], header: Array[Byte]) = {
+  def rowIteratorUtil(riter: Iterator[Row], fieldTypes: Array[DataType], header: Array[Byte]) = {
     val arrayIterator = riter.map( row =>
       row.toSeq.zip(fieldTypes).map { entry =>
         val field = entry._1
@@ -720,7 +720,7 @@ object GraphLabUtil {
    * @return the filename of the final SFRame
    */
   def toSFrame(rdd: RDD[String], outputDir: String, prefix: String): String = {
-    val javaRDDofUTF8Strings: RDD[Array[Byte]] = rdd.mapPartitions { iter =>
+    val javaRDDofUTF8Strings : RDD[Array[Byte]] = rdd.mapPartitions { (iter: Iterator[String]) =>
       val cs = Charset.forName("UTF-8")
       iter.map(s => s.getBytes(cs))
     }
@@ -728,7 +728,6 @@ object GraphLabUtil {
     val args = " --encoding=utf8 --type=rdd "
     pySparkToSFrame(javaRDDofUTF8Strings, outputDir, prefix, args)
   }
-
 
   /**
    * Load an SFrame into a JavaRDD of Pickled objects.
