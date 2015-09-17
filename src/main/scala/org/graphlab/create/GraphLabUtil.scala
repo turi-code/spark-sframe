@@ -496,7 +496,7 @@ object GraphLabUtil {
         } else {
           val exitStatus = proc.waitFor()
           if (exitStatus != 0) {
-            throw new Exception("Graphlab unity tosframe processes exit status " + exitStatus)
+            throw new Exception("Graphlab Unity toSFrame processes exit status " + exitStatus)
           }
           false
         }
@@ -613,7 +613,6 @@ object GraphLabUtil {
       s" --outputDir=$outputDir " +
       s" --prefix=$prefix"
     val sframe_name = concat(fnames, argsConcat)
-    fnames.foreach(println(_))
     sframe_name
   }
 
