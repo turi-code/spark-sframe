@@ -4,6 +4,7 @@ import java.io._
 import java.nio.charset.Charset
 import net.razorvine.pickle.{Pickler, Unpickler}
 import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.fs.permission.{FsAction,FsPermission}
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.{SparkContext, _}
 import org.apache.spark.api.java.JavaRDD
@@ -22,7 +23,6 @@ import scala.io.Source
 import java.nio.file.{Files, Paths}
 
 object GraphLabUtil {
-
 
   /**
    * Utility function needed to get access to GraphLabUtil object
@@ -87,16 +87,28 @@ object GraphLabUtil {
     if (outputDir.substring(0,7) == "hdfs://") { // this is an hdfs path to be created
       val path = new org.apache.hadoop.fs.Path(outputDir, subDir)
       val fs = FileSystem.get(sc.hadoopConfiguration)
-      val success = fs.mkdirs(path)
+      val permission = new FsPermission(FsAction.ALL,FsAction.ALL,FsAction.ALL)    
+      val success = fs.mkdirs(path,permission)
       if (!success) {
         println("Error making " + outputDir.toString)
       }
+      changePermissions(path.toString)
       path.toString
     } else { // assume this is a local path
       val dir = new File(outputDir, subDir)
       dir.mkdirs()
       dir.getAbsolutePath
     }
+  }
+
+  def changePermissions(outputDir: String): Int = {
+    val pb = new java.lang.ProcessBuilder(List("hadoop","fs","-chmod","777",outputDir))
+    val proc = pb.start() 
+    val exitstatus = proc.waitFor()
+    if (exitstatus != 0) {
+      throw new Exception("Cannot change the permission for " + outputDir + " exitStatus:" +  exitstatus)
+    }
+    exitstatus
   }
 
 
@@ -273,15 +285,24 @@ object GraphLabUtil {
     // resolving the path for libhdfs locally.
     getLibSearchPath
   }
-
+  
+  def getHadoopClasspath(): String = {
+    val pb = new java.lang.ProcessBuilder(List("hadoop", "classpath"))
+    val proc = pb.start() 
+    val pathNames = scala.io.Source.fromInputStream(proc.getInputStream).getLines().toArray
+    pathNames(0)
+  }
 
   /**
    * Get the classpath being used by spark.  
    */
   def getClasspath: String = {
     val sys = System.getProperties
-    val classPath = sys.getOrElse("java.class.path", "")
-    classPath
+    val classPath = sys.getOrElse("java.class.path", "") + java.io.File.pathSeparator + getHadoopClasspath
+    val expandedClassPath = classPath + java.io.File.pathSeparator + expandPath(classPath.replace("*","")).mkString(java.io.File.pathSeparator)
+    //println(tmp)
+    expandedClassPath
+    //classPath
     // Originally I had assumed we needed the expanded classpath (as
     // described by the JNI docs) however this does not appear to be
     // the case perhaps if there are class path issues consider adding
