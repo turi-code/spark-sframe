@@ -494,9 +494,9 @@ object GraphLabUtil {
         if (pathNames.hasNext) {
           true
         } else {
-          val exitstatus = proc.waitFor()
-          if (exitstatus != 0) {
-            throw new Exception("graphlab unity tosframe processes exit status " + exitstatus)
+          val exitStatus = proc.waitFor()
+          if (exitStatus != 0) {
+            throw new Exception("Graphlab unity tosframe processes exit status " + exitStatus)
           }
           false
         }
