@@ -6,7 +6,7 @@ import java.sql.Date
 
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.{SQLContext, Row}
-import org.apache.spark.sql.types.{StructType,StructField,StringType, DoubleType}
+import org.apache.spark.sql.types.{StructType,StructField,StringType, DoubleType,MapType}
 
 
 import org.junit.runner.RunWith
@@ -16,6 +16,7 @@ import Matchers._
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
 
+import net.razorvine.pickle.custom.{Pickler, Unpickler}
 
 import scala.collection.mutable.Stack
 
@@ -92,7 +93,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     rdd.take(1)(0).get("_1").asInstanceOf[Array[Double]] should equal (Array(1.0, 2.0, 3.0))
   }
 
-
+  
   test("save a dataframe of x,y (double array, double, datetime) pairs to an sframe") {
     val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000)
       .map(x => (Array(1.0, 2.0, 3.0), 1.0, new Date(0))))
@@ -104,7 +105,23 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     rdd.take(1)(0).get("_1").asInstanceOf[Array[Double]] should equal (Array(1.0, 2.0, 3.0))
   }
 
-
+  test("save a dataframe of MapType to an sframe") {
+    val schema = StructType(Seq(StructField("attributes", MapType(StringType, StringType, false))))
+    var A: Map[String,String] = Map()
+    A += ( "J" -> "J")
+    A += ( "F" -> "F")
+    var rdd = sc.parallelize(Array(A))
+    val row_rdd = rdd.map(p => Row(p))
+    val df = sqlContext.createDataFrame(row_rdd,schema)
+    val tmpDir = Files.createTempDirectory("sframe_test")
+    val sframeFileName = GraphLabUtil.toSFrame(df, tmpDir.toString, "test")
+    val output_rdd = GraphLabUtil.toRDD(sc, sframeFileName).cache
+    assert(rdd.count === output_rdd.count, "rdds are same dimension") 
+    val h = output_rdd.collect()(0)
+    assert(rdd.collect()(0)("F") == h.get("attributes").asInstanceOf[java.util.HashMap[String,String]].get("F"))
+    assert(rdd.collect()(0)("J") == h.get("attributes").asInstanceOf[java.util.HashMap[String,String]].get("J"))
+  }
+  
   test("Checking fields names") {
     val x = sc.parallelize(0 to 1000).map(x => (x.toString, x.toDouble))
     val schema = StructType(Array(StructField("name", StringType), StructField("age", DoubleType)))

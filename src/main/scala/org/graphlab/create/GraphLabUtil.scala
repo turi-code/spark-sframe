@@ -2,7 +2,7 @@ package org.graphlab.create
 
 import java.io._
 import java.nio.charset.Charset
-import net.razorvine.pickle.{Pickler, Unpickler}
+import net.razorvine.pickle.custom.{Pickler, Unpickler}
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.fs.permission.{FsAction,FsPermission}
 import org.apache.spark.sql.types.DataType
