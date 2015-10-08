@@ -1,20 +1,22 @@
+/** Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *	 http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package net.razorvine.pickle.custom;
 
 import java.io.IOException;
 import java.io.OutputStream;
 
 import net.razorvine.pickle.PickleException;
-
-/**
- * This file is borrowed directly from pyspark-cassandra (thanks!)
- *
- * https://github.com/TargetHolding/pyspark-cassandra/
- *
- * It uses a customized razorvine Pickler with better implementation of
- * pickling of Scala Maps and Tuples (again thank you!) to convert an Iterator
- * over java objects to an Iterator over pickled python objects.
- *
- */
 
 /**
  * Interface for Object Picklers used by the pickler, to pickle custom classes. 
