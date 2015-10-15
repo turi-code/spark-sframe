@@ -1,6 +1,9 @@
 # Spark Unity Codebase
 This project contains the code to interact with the GraphLab Create open-source project from within Apache Spark.  Currently, the jar created by this project is included in the GraphLab Create python egg to enable translation between Apache Spark Dataframes and GraphLab Create SFrames.  Users can also use this project in the scala spark shell to export Dataframes as SFrames.
 
+## Soft Dependency
+The spark-sframe package leverages two binaries "spark_unity_linux" and "spark_unity_mac" which are directly built from open-source sframe package: https://github.com/dato-code/SFrame.
+
 ## Building spark-sframe
 To build the `spark-unity.jar` all you need is to have the java jdk installed on your platform and run our pre-bundled `mvn`:
 ```bash
@@ -83,5 +86,3 @@ We also currently only support Mac and Linux platforms but will have Windows sup
 
 # Recommended Settings for Spark Installation on a Cluster
 We recommend downloading ``Pre-built for Hadoop 2.4 and later`` version of <a href="http://spark.apache.org/">Apache Spark</a>.
-
-
