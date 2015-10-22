@@ -294,7 +294,40 @@ object GraphLabUtil {
   }
   
   def getHadoopClasspath(): String = {
-    val pb = new java.lang.ProcessBuilder(List("hadoop", "classpath"))
+    // Find hadoop binary
+    val parentEnv = System.getenv
+    // parentEnv.foreach { case (v, x) => println(s"parent $v, $x") }
+    val hadoopHomePath =
+      if (parentEnv.contains("HADOOP_HOME")) {
+        parentEnv.get("HADOOP_HOME") + java.io.File.separator + "bin"
+      } else {
+        ""
+      }
+    val hadoopConfPath =
+      if (parentEnv.contains("HADOOP_CONF_DIR")) {
+        parentEnv.get("HADOOP_CONF_DIR") + java.io.File.separator + ".." + java.io.File.separator + "bin"
+      } else {
+        ""
+      }
+    val extendedPath = parentEnv.getOrElse("PATH", "") + java.io.File.pathSeparator + hadoopHomePath +
+      java.io.File.pathSeparator + hadoopConfPath
+    println(s"Extended Path + $extendedPath")
+
+    val candidates = extendedPath.split(java.io.File.pathSeparator)
+      .map(_.trim()).filter(_.nonEmpty).map(p => new java.io.File(p, "hadoop")).filter(_.exists())
+
+    val pb = if (candidates.nonEmpty) {
+      println(s"path Used ${candidates(0).toString}")
+      new java.lang.ProcessBuilder(List(candidates(0).toString, "classpath"))
+    } else {
+      new java.lang.ProcessBuilder(List("hadoop", "classpath"))
+    }
+
+    val childEnv = pb.environment
+    childEnv.foreach { case (v, x) => println(s"child $v, $x") }
+    parentEnv.foreach { case (variable, value) => childEnv.put(variable, value) }
+
+
     val proc = pb.start() 
     val pathNames = scala.io.Source.fromInputStream(proc.getInputStream).getLines().toArray
     pathNames(0)
@@ -568,7 +601,11 @@ object GraphLabUtil {
    * them into a single sframe
    *
    */
-  def concat(sframes: Array[String], args: String): String = {
+  def concat(sframesIn: Array[String], args: String): String = {
+    sframesIn.foreach(println(_))
+    val sframes = sframesIn.filter { path =>
+      path.startsWith("hdfs://") || path.startsWith("/") || path.startsWith("file://")
+    }
     // Launch the graphlab unity process
     val proc = launchProcess(UnityMode.Concat, args)
 
