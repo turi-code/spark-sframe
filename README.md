@@ -2,7 +2,7 @@
 This project contains the code to interact with the [SFrame](https://github.com/dato-code/SFrame) open-source project from within Apache Spark.  Currently, the jar created by this project is included in the GraphLab Create python egg to enable translation between Apache Spark Dataframes and GraphLab Create SFrames.  Users can also use this project in the scala spark shell to export Dataframes as SFrames.
 
 ## Soft Dependency
-The spark-sframe package leverages two binaries "spark_unity_linux" and "spark_unity_mac" which are directly built from open-source SFrame package: https://github.com/dato-code/SFrame.
+The spark-sframe package leverages two binaries "spark_unity_linux" and "spark_unity_mac" which are directly built from the open-source [SFrame](https://github.com/dato-code/SFrame) package.
 
 ## Building spark-sframe
 To build the `spark-unity.jar` all you need is to have the java jdk installed on your platform and run our pre-bundled `mvn`:
