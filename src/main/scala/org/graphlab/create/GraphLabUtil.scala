@@ -316,21 +316,18 @@ object GraphLabUtil {
     val candidates = extendedPath.split(java.io.File.pathSeparator)
       .map(_.trim()).filter(_.nonEmpty).map(p => new java.io.File(p, "hadoop")).filter(_.exists())
 
-    val pb = if (candidates.nonEmpty) {
+    if (candidates.nonEmpty) {
       //println(s"path Used ${candidates(0).toString}")
-      new java.lang.ProcessBuilder(List(candidates(0).toString, "classpath"))
+      val pb = new java.lang.ProcessBuilder(List(candidates(0).toString, "classpath"))
+      val childEnv = pb.environment
+      //childEnv.foreach { case (v, x) => println(s"child $v, $x") }
+      parentEnv.foreach { case (variable, value) => childEnv.put(variable, value) }
+      val proc = pb.start()
+      val pathNames = scala.io.Source.fromInputStream(proc.getInputStream).getLines().toArray
+      pathNames.mkString(java.io.File.pathSeparator)
     } else {
-      new java.lang.ProcessBuilder(List("hadoop", "classpath"))
+      "" // No way to get additional hadoop classpath information
     }
-
-    val childEnv = pb.environment
-    //childEnv.foreach { case (v, x) => println(s"child $v, $x") }
-    parentEnv.foreach { case (variable, value) => childEnv.put(variable, value) }
-
-
-    val proc = pb.start() 
-    val pathNames = scala.io.Source.fromInputStream(proc.getInputStream).getLines().toArray
-    pathNames(0)
   }
 
   /**
