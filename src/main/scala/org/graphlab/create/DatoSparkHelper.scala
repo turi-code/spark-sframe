@@ -13,7 +13,6 @@ import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.api.python._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.execution.EvaluatePython
 
 /**
  * This object contains helper functions that can reach into

@@ -9,16 +9,18 @@ package org.graphlab.create
 
 import java.io._
 import java.nio.charset.Charset
-import net.razorvine.pickle.custom.{Pickler, Unpickler}
+import net.razorvine.pickle.{Pickler, Unpickler}
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.fs.permission.{FsAction,FsPermission}
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.{SparkContext, _}
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.dato.DatoSparkHelper
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, DataFrame}
-import org.apache.spark.sql.execution.EvaluatePython
+import org.apache.spark.dato.EvaluatePython
+import org.apache.spark.dato.AutoBatchedPickler
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -50,14 +52,6 @@ object GraphLabUtil {
   }
   import UnityMode._
   
-
-  /**
-   * This function is borrowed directly from Apache Spark SerDeUtil.scala (thanks!)
-   * 
-   * It uses the razorvine Pickler (again thank you!) to convert an Iterator over
-   * java objects to an Iterator over pickled python objects.
-   *
-   */
   class AutoBatchedPickler(iter: Iterator[Any]) extends Iterator[Array[Byte]] {
     private val pickle = new Pickler()
     private var batch = 1
@@ -81,7 +75,6 @@ object GraphLabUtil {
       bytes
     }
   }
-
 
   /**
    * Create the desired output directory which may (is likely)
@@ -336,10 +329,10 @@ object GraphLabUtil {
   def getClasspath: String = {
     val sys = System.getProperties
     val classPath = sys.getOrElse("java.class.path", "") + java.io.File.pathSeparator + getHadoopClasspath
-    val expandedClassPath = classPath + java.io.File.pathSeparator + expandPath(classPath.replace("*","")).mkString(java.io.File.pathSeparator)
+    //val expandedClassPath = classPath + java.io.File.pathSeparator + expandPath(classPath.replace("*","")).mkString(java.io.File.pathSeparator)
     //println(tmp)
-    expandedClassPath
-    //classPath
+    //expandedClassPath
+    classPath
     // Originally I had assumed we needed the expanded classpath (as
     // described by the JNI docs) however this does not appear to be
     // the case perhaps if there are class path issues consider adding
@@ -471,9 +464,9 @@ object GraphLabUtil {
     // Start a thread to print the process's stderr to ours
     new Thread("GraphLab Unity Standard Error Reader") {
       override def run() {
-        //for (line <- Source.fromInputStream(proc.getErrorStream).getLines()) {
-        //  System.err.println("UNITY MSG: \t" + line)
-        //}
+        for (line <- Source.fromInputStream(proc.getErrorStream).getLines()) {
+          System.err.println("UNITY MSG: \t" + line)
+        }
       }
     }.start()
     proc
@@ -653,6 +646,9 @@ object GraphLabUtil {
       s" --outputDir=$outputDir " +
       s" --prefix=$prefix"
     val sframe_name = concat(fnames, argsConcat)
+    if (sframe_name.substring(0,7) == "hdfs://") { 
+      changePermissions(sframe_name)
+    }
     sframe_name
   }
 
@@ -706,7 +702,7 @@ object GraphLabUtil {
     // Convert the data frame into an RDD of byte arrays
     df.rdd.mapPartitions ( rowIteratorUtil(_, fieldTypes, headerBytes) ).toJavaRDD()
   }
-
+  
   /**
    * The row iterator function has been pulled out of the above function to eliminate deep nested closures.
    * This oddly resolves an issue where the classloader may not capture all the closures when loading GraphLabUtil
@@ -720,19 +716,21 @@ object GraphLabUtil {
    * @return
    */
   def rowIteratorUtil(riter: Iterator[Row], fieldTypes: Array[DataType], header: Array[Byte]) = {
-    val arrayIterator = riter.map( row =>
-      row.toSeq.zip(fieldTypes).map { entry =>
+    val arrayIterator = riter.map( row => 
+       row.toSeq.zip(fieldTypes).map { entry =>
         val field = entry._1
         val fieldType = entry._2
+        //println(fieldType.toString)
         val value = EvaluatePython.toJava(field, fieldType)
-        if (value.isInstanceOf[collection.mutable.WrappedArray[_]]) {
+        value
+        /*if (value.isInstanceOf[collection.mutable.WrappedArray[_]]) {
           // This is a strange bug but Spark is wrapping its arrays in the java
           // conversion which is breaking the razorvine serialization.
           // by converting the wrapper array back to a standard array seralization works
           value.asInstanceOf[collection.mutable.WrappedArray[_]].toArray
         } else {
           value
-        }
+        }*/
       }.toArray
     )
     Iterator(header) ++ new AutoBatchedPickler(arrayIterator)
