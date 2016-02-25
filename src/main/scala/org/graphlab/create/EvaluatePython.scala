@@ -20,6 +20,8 @@ package org.apache.spark.dato
 import java.io.OutputStream
 import java.sql.Date
 import java.util.Date
+import java.util.Calendar
+import java.util.GregorianCalendar;
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import net.razorvine.pickle.{IObjectPickler, Opcodes, Pickler}
@@ -72,7 +74,9 @@ class GenericRowWithSchema(values: Array[Any], override val schema: StructType)
  * java objects to an Iterator over pickled python objects.
  */
 class AutoBatchedPickler(iter: Iterator[Any]) extends Iterator[Array[Byte]] {
+  EvaluatePython.registerPicklers()
   private val pickle = new Pickler()
+  
   private var batch = 1
   private val buffer = new mutable.ArrayBuffer[Any]
 
@@ -125,6 +129,7 @@ object EvaluatePython {
         a 
     case (o:Any, mt: DateType) =>
       new java.util.Date(o.asInstanceOf[java.sql.Date].getDate())
+    
     case (o: Any, mt: MapType) =>
       val map = o.asInstanceOf[Map[_,_]]
       val jmap = new java.util.HashMap[Any, Any](map.size)
@@ -145,6 +150,38 @@ object EvaluatePython {
 
   private val module = "pyspark.sql.types"
 
+  
+  /**
+   * Pickler for java.util.date. We need to register a customized 
+   * pickler for DateType object. The default pickler in net.razorvine.pickle
+   * is very broken! 
+   */
+
+  private class DateTypePickler extends IObjectPickler {
+    private val cls = classOf[java.util.Date]
+
+    def register(): Unit = {
+      Pickler.registerCustomPickler(cls, this)  
+    }
+
+    def pickle(obj: Object, out: OutputStream, pickler: Pickler): Unit = {
+      val date = obj.asInstanceOf[java.util.Date]
+      val cal= new GregorianCalendar()
+      cal.setTime(date)
+      out.write(Opcodes.GLOBAL);
+      out.write("datetime\ndatetime\n".getBytes());
+      out.write(Opcodes.MARK);
+      pickler.save(cal.get(Calendar.YEAR));
+      pickler.save(cal.get(Calendar.MONTH)+1);    // months start at 0 in java
+      pickler.save(cal.get(Calendar.DAY_OF_MONTH));
+      pickler.save(cal.get(Calendar.HOUR_OF_DAY));
+      pickler.save(cal.get(Calendar.MINUTE));
+      pickler.save(cal.get(Calendar.SECOND));
+      pickler.save(cal.get(Calendar.MILLISECOND)*1000);
+      out.write(Opcodes.TUPLE);
+      out.write(Opcodes.REDUCE);
+    }
+  }
   /**
    * Pickler for StructType
    */
@@ -167,8 +204,8 @@ object EvaluatePython {
   }
 
   /**
-   * Pickler for external row.
-   */
+    * Pickler for external row.
+    */
   private class RowPickler extends IObjectPickler {
 
     private val cls = classOf[GenericRowWithSchema]
@@ -207,27 +244,18 @@ object EvaluatePython {
   private[this] var registered = false
 
   /**
-   * This should be called before trying to serialize any above classes un cluster mode,
-   * this should be put in the closure
-   */
+    * This should be called before trying to serialize any above classes un cluster mode,
+    * this should be put in the closure
+    */
   def registerPicklers(): Unit = {
     synchronized {
       if (!registered) {
         new StructTypePickler().register()
         new RowPickler().register()
+        new DateTypePickler().register()
         registered = true
       }
     }
   }
 
-  /**
-   * Convert an RDD of Java objects to an RDD of serialized Python objects, that is usable by
-   * PySpark.
-   */
-  def javaToPython(rdd: RDD[Any]): RDD[Array[Byte]] = {
-    rdd.mapPartitions { iter =>
-      registerPicklers()  // let it called in executor
-      new AutoBatchedPickler(iter)
-    }
-  }
 }
