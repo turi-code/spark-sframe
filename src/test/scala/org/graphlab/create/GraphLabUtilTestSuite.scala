@@ -100,7 +100,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     rdd.take(1)(0).get("_1").asInstanceOf[Array[Double]] should equal (Array(1.0, 2.0, 3.0))
   }
 
-  /* 
+  
   test("save a dataframe of x,y (double array, double, datetime) pairs to an sframe") {
     val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000)
       .map(x => (Array(1.0, 2.0, 3.0), 1.0, new Date(100000000))))
@@ -110,7 +110,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     assert(rdd.count === df.count, "rdds are same dimension")
     assert(rdd.take(1)(0).size === 3, "Resulting rdd rows should be two dimensional")
     rdd.take(1)(0).get("_1").asInstanceOf[Array[Double]] should equal (Array(1.0, 2.0, 3.0))
-  }*/
+  }
 
   test("save a dataframe of MapType to an sframe") {
     val schema = StructType(Seq(StructField("attributes", MapType(StringType, StringType, false))))
