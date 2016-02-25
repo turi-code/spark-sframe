@@ -33,6 +33,9 @@ import org.apache.spark.unsafe.types.UTF8String
 import scala.collection.mutable
 import scala.collection.JavaConversions._
 
+/**
+ * Most of the content in this class is borrowed directly from Apache Spark EvaluatePython.scala (thanks!)
+ */
 
 
 /**
@@ -65,14 +68,10 @@ class GenericRowWithSchema(values: Array[Any], override val schema: StructType)
 }
 
 /**
- * This function is borrowed directly from Apache Spark SerDeUtil.scala (thanks!)
- * 
- * It uses the razorvine Pickler (again thank you!) to convert an Iterator over
+ * This function uses the razorvine Pickler to convert an Iterator over
  * java objects to an Iterator over pickled python objects.
- *
  */
 class AutoBatchedPickler(iter: Iterator[Any]) extends Iterator[Array[Byte]] {
-  EvaluatePython.registerPicklers()
   private val pickle = new Pickler()
   private var batch = 1
   private val buffer = new mutable.ArrayBuffer[Any]
