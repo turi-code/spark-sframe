@@ -696,7 +696,6 @@ object GraphLabUtil {
        row.toSeq.zip(fieldTypes).map { entry =>
         val field = entry._1
         val fieldType = entry._2
-        //println(fieldType.toString)
         val value = EvaluatePython.toJava(field, fieldType)
         value
         /*if (value.isInstanceOf[collection.mutable.WrappedArray[_]]) {

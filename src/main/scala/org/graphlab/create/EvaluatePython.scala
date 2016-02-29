@@ -22,16 +22,14 @@ import java.sql.Date
 import java.util.Date
 import java.util.Calendar
 import java.util.GregorianCalendar;
+import java.util.List
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import net.razorvine.pickle.{IObjectPickler, Opcodes, Pickler}
 
-import org.apache.spark.sql.catalyst.InternalRow
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
-import org.apache.spark.unsafe.types.UTF8String
 import scala.collection.mutable
 import scala.collection.JavaConversions._
 
@@ -40,34 +38,6 @@ import scala.collection.JavaConversions._
  */
 
 
-/**
- * A row implementation that uses an array of objects as the underlying storage.  Note that, while
- * the array is not copied, and thus could technically be mutated after creation, this is not
- * allowed.
- */
-class GenericRow(val values: Array[Any]) extends Row {
-  /** No-arg constructor for serialization. */
-  protected def this() = this(null)
-
-  def this(size: Int) = this(new Array[Any](size))
-
-  override def length: Int = values.length
-
-  override def get(i: Int): Any = values(i)
-
-  override def toSeq: Seq[Any] = values.clone()
-
-  override def copy(): GenericRow = this
-}
-
-class GenericRowWithSchema(values: Array[Any], override val schema: StructType)
-  extends GenericRow(values) {
-
-  /** No-arg constructor for serialization. */
-  protected def this() = this(null, null)
-
-  override def fieldIndex(name: String): Int = schema.fieldIndex(name)
-}
 
 /**
  * This function uses the razorvine Pickler to convert an Iterator over
@@ -105,16 +75,6 @@ object EvaluatePython {
    */
   def toJava(obj: Any, dataType: DataType): Any = (obj, dataType) match {
     case (null, _) => null
-
-    case (row: InternalRow, struct: StructType) =>
-      val values = new Array[Any](row.numFields)
-      var i = 0
-      while (i < row.numFields) {
-        values(i) = toJava(row.get(i, struct.fields(i).dataType), struct.fields(i).dataType)
-        i += 1
-      }
-      new GenericRowWithSchema(values, struct)
-
     case (a: Any, struct: StructType) =>
        val row = a.asInstanceOf[Row]
        val jmap = new java.util.HashMap[String, Any](row.length) 
@@ -123,13 +83,17 @@ object EvaluatePython {
        }
        jmap 
     case (a: Any, array: ArrayType) =>
-      if (a.isInstanceOf[collection.mutable.WrappedArray[_]]) {
-          a.asInstanceOf[collection.mutable.WrappedArray[_]].toArray
+      if (a.isInstanceOf[ArrayBuffer[_]]){
+        val c : java.util.List[Any] = a.asInstanceOf[ArrayBuffer[_]]
+        c
+      } 
+      else if (a.isInstanceOf[collection.mutable.WrappedArray[_]]) {
+        val c = a.asInstanceOf[collection.mutable.WrappedArray[_]].toArray
+        c
       } else 
-        a 
+        a
     case (o:Any, mt: DateType) =>
       new java.util.Date(o.asInstanceOf[java.sql.Date].getDate())
-    
     case (o: Any, mt: MapType) =>
       val map = o.asInstanceOf[Map[_,_]]
       val jmap = new java.util.HashMap[Any, Any](map.size)
@@ -141,10 +105,9 @@ object EvaluatePython {
 
     case (d: Decimal, _) => d.toJavaBigDecimal
 
-    case (s: UTF8String, StringType) => s.toString
+    case (s: Any, StringType) => s.toString
 
     case (other, _) => 
-      //println("I am in other")
       other
   }
 
@@ -203,44 +166,6 @@ object EvaluatePython {
     }
   }
 
-  /**
-    * Pickler for external row.
-    */
-  private class RowPickler extends IObjectPickler {
-
-    private val cls = classOf[GenericRowWithSchema]
-
-    // register this to Pickler and Unpickler
-    def register(): Unit = {
-      Pickler.registerCustomPickler(this.getClass, this)
-      Pickler.registerCustomPickler(cls, this)
-    }
-
-    def pickle(obj: Object, out: OutputStream, pickler: Pickler): Unit = {
-      if (obj == this) {
-        out.write(Opcodes.GLOBAL)
-        out.write((module + "\n" + "_create_row_inbound_converter" + "\n").getBytes("utf-8"))
-      } else {
-        // it will be memorized by Pickler to save some bytes
-        pickler.save(this)
-        val row = obj.asInstanceOf[GenericRowWithSchema]
-        // schema should always be same object for memoization
-        pickler.save(row.schema)
-        out.write(Opcodes.TUPLE1)
-        out.write(Opcodes.REDUCE)
-
-        out.write(Opcodes.MARK)
-        var i = 0
-        while (i < row.values.length) {
-          pickler.save(row.values(i))
-          i += 1
-        }
-        out.write(Opcodes.TUPLE)
-        out.write(Opcodes.REDUCE)
-      }
-    }
-  }
-
   private[this] var registered = false
 
   /**
@@ -251,7 +176,6 @@ object EvaluatePython {
     synchronized {
       if (!registered) {
         new StructTypePickler().register()
-        new RowPickler().register()
         new DateTypePickler().register()
         registered = true
       }
