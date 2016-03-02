@@ -585,14 +585,14 @@ object GraphLabUtil {
     if (exitStatus != 0) {
       throw new Exception("Subprocess exited with status " + exitStatus)
     }
-
     // Get an iterator over the output
     val outputIter = Source.fromInputStream(proc.getInputStream).getLines()
-    if (!outputIter.hasNext) {
-      throw new Exception("Concatenation failed!")
-    }
+    var finalSFrameName = ""
     // Get and return the name of the final SFrame
-    val finalSFrameName = outputIter.next()
+    // we need a while loop here to capture the last line from proc.getInputStream 
+    while (outputIter.hasNext) {
+      finalSFrameName = outputIter.next()
+    }
     finalSFrameName
   }
 
