@@ -595,14 +595,13 @@ object GraphLabUtil {
     if (exitStatus != 0) {
       throw new Exception("Subprocess exited with status " + exitStatus)
     }
-
     val outputIter = Source.fromInputStream(proc.getInputStream).getLines()
     var finalSFrameName = ""
     // Get and return the name of the final SFrame
     // we need a while loop here to capture the last line from proc.getInputStream 
     while (outputIter.hasNext) {
       finalSFrameName = outputIter.next()
-    } 
+    }
     finalSFrameName
   }
 
