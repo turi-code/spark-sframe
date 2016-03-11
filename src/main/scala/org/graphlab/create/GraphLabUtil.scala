@@ -222,10 +222,10 @@ object GraphLabUtil {
     val platform = getPlatform
     if (platform == "mac") {
       installBinary("libhdfs.dylib", as="libhdfs.so")
-      installBinary("cy_callback.so")
-      installBinary("cy_cpp_utils.so")
-      installBinary("cy_flexible_type.so")
-      installBinary("cy_spark_unity.so")
+      installBinary("cy_callback.dylib", as="cy_callback.so")
+      installBinary("cy_cpp_utils.dylib", as="cy_cpp_utils.so")
+      installBinary("cy_flexible_type.dylib", as="cy_flexible_type.so")
+      installBinary("cy_spark_unity.dylib", as="cy_spark_unity.so")
     } else if (platform == "linux") {
       installBinary("cy_callback.so")
       installBinary("cy_cpp_utils.so")
