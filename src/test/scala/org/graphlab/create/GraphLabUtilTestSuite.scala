@@ -13,7 +13,7 @@ import java.sql.Date
 
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.{SQLContext, Row}
-import org.apache.spark.sql.types.{StructType,StructField,StringType, DoubleType,MapType, LongType}
+import org.apache.spark.sql.types.{StructType,StructField,StringType, DoubleType,MapType, LongType, IntegerType}
 
 
 import org.junit.runner.RunWith
@@ -58,8 +58,18 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     assert(rdd.count === df.count, "rdds are same dimension")
     assert(rdd.take(1)(0).size === 2, "Resulting rdd rows should be two dimensional")
   }
-
-
+   
+  test("save a dataframe of ints with nulls to an sframe") {
+    val schema = StructType(StructField("w", IntegerType, true) :: StructField("v", IntegerType, true):: Nil)
+    val data = sc.parallelize(Array(Row(1.0,2.0),Row(2.0,null)))
+    val df = sqlContext.createDataFrame(data,schema)
+    val tmpDir = Files.createTempDirectory("sframe_test")
+    val outputFname = GraphLabUtil.toSFrame(df, tmpDir.toString, "test")
+    val rdd = GraphLabUtil.toRDD(sc, outputFname).cache
+    assert(rdd.count === df.count, "rdds are same dimension")
+    assert(rdd.take(2)(1).get("v") === null, "Resulting rdd should have the null value.")
+  }
+  
   test("save a dataframe of doubles to an sframe") {
     val df = sqlContext.createDataFrame(sc.parallelize(0 to 1000).map(x => (x, x.toDouble)))
     val tmpDir = Files.createTempDirectory("sframe_test")
@@ -129,7 +139,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     assert(rdd.collect()(0)("J") == h.get("attributes").asInstanceOf[java.util.HashMap[String,String]].get("J"))
   }
    
-  
+   
   /*
   test("save a dataframe of StructType to an sframe") {
     val df = sqlContext.read.parquet("file:///Users/soroush/Downloads/part-r-00000.parquet")
@@ -161,7 +171,7 @@ class GraphLabUtilTestSuite extends FunSuite with BeforeAndAfter {
     val expected_values = df.rdd.collect()
     assert(values(0).get("name") === expected_values(0)(0))
   }*/
-  
+    
   test("Checking fields names") {
     val x = sc.parallelize(0 to 1000).map(x => (x.toString, x.toDouble))
     val schema = StructType(Array(StructField("name", StringType), StructField("age", DoubleType)))

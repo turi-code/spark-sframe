@@ -218,13 +218,22 @@ object GraphLabUtil {
   /**
    * Install the correct platform specific libhdfs binary
    */
-  def installLibHDFS() {
+  def installSharedLibs() {
     val platform = getPlatform
     if (platform == "mac") {
       installBinary("libhdfs.dylib", as="libhdfs.so")
+      installBinary("cy_callback.dylib", as="cy_callback.so")
+      installBinary("cy_cpp_utils.dylib", as="cy_cpp_utils.so")
+      installBinary("cy_flexible_type.dylib", as="cy_flexible_type.so")
+      installBinary("cy_spark_unity.dylib", as="cy_spark_unity.so")
     } else if (platform == "linux") {
-      installBinary("libhdfs.so", as="libhdfs.so")
+      installBinary("cy_callback.so")
+      installBinary("cy_cpp_utils.so")
+      installBinary("cy_flexible_type.so")
+      installBinary("cy_spark_unity.so")
+      installBinary("libhdfs.so")
     } else { // windows
+      // not supported yet.
       installBinary("hdfs.dll", as="hdfs.dll")
     }
   }
@@ -346,7 +355,7 @@ object GraphLabUtil {
    *
    */
   def getBinaryName: String = {
-    "spark_unity_" + getPlatform
+    "pyspark_unity.py"
   }
 
 
@@ -404,8 +413,9 @@ object GraphLabUtil {
     // Construct the process builder with the full argument list 
     // including the unity binary name and unity mode
     // @todo it is odd that I needed the ./ before the filename to execute it with process builder
-    val launchName = "." + java.io.File.separator + getBinaryName.trim()
-    val fullArgList = (List(launchName, mode.toString) ++ args.split(" ")).map(_.trim).filter(_.nonEmpty)
+    val interpreter = "python"
+    val launchName = "." + java.io.File.separator  + getBinaryName.trim()
+    val fullArgList = (List(interpreter, launchName, mode.toString) ++ args.split(" ")).map(_.trim).filter(_.nonEmpty)
     // Display the command being run
     //println("Launching Unity: \n\t" + fullArgList.mkString(" "))
     val pb = new java.lang.ProcessBuilder(fullArgList)
@@ -423,7 +433,7 @@ object GraphLabUtil {
     env.put(getPlatformLinkVar, getUnityLibPath)
 
     try {
-      installLibHDFS()
+      installSharedLibs()
     } catch {
       case e: Exception =>
         System.err.println("Error installing native libhdfs relying on environment.")
@@ -585,7 +595,6 @@ object GraphLabUtil {
     if (exitStatus != 0) {
       throw new Exception("Subprocess exited with status " + exitStatus)
     }
-    // Get an iterator over the output
     val outputIter = Source.fromInputStream(proc.getInputStream).getLines()
     var finalSFrameName = ""
     // Get and return the name of the final SFrame
@@ -595,7 +604,6 @@ object GraphLabUtil {
     }
     finalSFrameName
   }
-
 
   /**
    * This function takes a pyspark RDD exposed by the JavaRDD of bytes
@@ -618,6 +626,7 @@ object GraphLabUtil {
     val fnames = jrdd.rdd.mapPartitions (
       (iter: Iterator[Array[Byte]]) => { toSFrameIterator(argsTooSFrame, iter) }
     ).collect()
+    
     val argsConcat = additionalArgs +
       s" --outputDir=$outputDir " +
       s" --prefix=$prefix"
