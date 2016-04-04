@@ -1,7 +1,7 @@
 /**
  * Copyright (C) 2015 Dato, Inc.
  * All rights reserved.
- *
+*
  * This software may be modified and distributed under the terms
  * of the BSD license. See the LICENSE file for details.
  */
@@ -60,6 +60,7 @@ object GraphLabUtil {
    *  mkdir -p /way/too/long/path/name
    */
   def makeDir(outputDir: String, subDir: String, sc: SparkContext): String = {
+    /*
     if (outputDir.substring(0,7) == "hdfs://") { // this is an hdfs path to be created
       val path = new org.apache.hadoop.fs.Path(outputDir, subDir)
       val fs = FileSystem.get(sc.hadoopConfiguration)
@@ -69,6 +70,13 @@ object GraphLabUtil {
         println("Error making " + outputDir.toString)
       }
       changePermissions(path.toString)
+      path.toString 
+    } 
+    */
+    if (outputDir.substring(0,7) == "hdfs://") { // this is an hdfs path to be created
+      val path = new org.apache.hadoop.fs.Path(outputDir, subDir)
+      mkdirs(path.toString)
+      changePermissions(path.toString)
       path.toString
     } else { // assume this is a local path
       val dir = new File(outputDir, subDir)
@@ -76,7 +84,17 @@ object GraphLabUtil {
       dir.getAbsolutePath
     }
   }
-
+  
+  def mkdirs(path: String): Int = { 
+    val pb = new java.lang.ProcessBuilder(List("hadoop","fs","-mkdir","-p",path))
+    val proc = pb.start() 
+    val exitstatus = proc.waitFor()
+    if (exitstatus != 0) {
+      throw new Exception("Cannot create directory for " + path + " exitStatus:" +  exitstatus)
+    }
+    exitstatus
+  }
+  
   def changePermissions(outputDir: String): Int = {
     val pb = new java.lang.ProcessBuilder(List("hadoop","fs","-chmod","777",outputDir))
     val proc = pb.start() 
@@ -376,13 +394,30 @@ object GraphLabUtil {
     conf.get("fs.default.name")
   }
 
+  /**
+   * Get the nameservice for this hadoop cluster.
+   */
+  def getHadoopNameService: String = {
+    val conf = new org.apache.hadoop.conf.Configuration
+    conf.get("dfs.nameservices")
+  }
 
   /**
    * Get the default namenode for this spark context
    */
   def getHadoopNameNode(sc: SparkContext): String = {
-    val conf = sc.hadoopConfiguration
-    conf.get("fs.default.name")
+    val conf = new org.apache.hadoop.conf.Configuration
+    var hadoopNameNode: String = conf.get("fs.default.name")
+    if (hadoopNameNode.substring(0,7) == "wasb://") { 
+      val hadoopNameService = getHadoopNameService
+      if (hadoopNameService != null) { 
+        hadoopNameNode = "hdfs://" + getHadoopNameService + "/user/" + sc.sparkUser
+      }
+      else { 
+        throw new Exception("fs.default.name returns a wasb address (" + hadoopNameNode + "). We cannot Proceed without activating dfs.nameservices")
+      }
+    }
+    hadoopNameNode
   }
 
 
