@@ -73,7 +73,7 @@ object GraphLabUtil {
       path.toString 
     } 
     */
-    if (outputDir.substring(0,7) == "hdfs://") { // this is an hdfs path to be created
+    if (outputDir.startsWith("hdfs://")) { // this is an hdfs path to be created
       val path = new org.apache.hadoop.fs.Path(outputDir, subDir)
       mkdirs(path.toString)
       changePermissions(path.toString)
@@ -408,10 +408,10 @@ object GraphLabUtil {
   def getHadoopNameNode(sc: SparkContext): String = {
     val conf = new org.apache.hadoop.conf.Configuration
     var hadoopNameNode: String = conf.get("fs.default.name")
-    if (hadoopNameNode.substring(0,7) == "wasb://") { 
+    if (hadoopNameNode.startsWith("wasb://")) { 
       val hadoopNameService = getHadoopNameService
       if (hadoopNameService != null) { 
-        hadoopNameNode = "hdfs://" + getHadoopNameService + "/user/" + sc.sparkUser
+        hadoopNameNode = "hdfs://" + getHadoopNameService
       }
       else { 
         throw new Exception("fs.default.name returns a wasb address (" + hadoopNameNode + "). We cannot Proceed without activating dfs.nameservices")
@@ -666,7 +666,7 @@ object GraphLabUtil {
       s" --outputDir=$outputDir " +
       s" --prefix=$prefix"
     val sframe_name = concat(fnames, argsConcat)
-    if (sframe_name.substring(0,7) == "hdfs://") { 
+    if (sframe_name.startsWith("hdfs://")) { 
       changePermissions(sframe_name)
     }
     sframe_name
@@ -762,9 +762,13 @@ object GraphLabUtil {
   def toSFrame(df: DataFrame, outputDir: String, prefix: String): String = {
     // Convert the dataframe into a Java rdd of pickles of batches of Rows
     val javaRDDofPickles = pickleDataFrame(df)
+    var path: String = outputDir
+    if(path.endsWith("/")) { 
+      path = outputDir.slice(0, outputDir.length - 1)
+    } 
     // Construct the arguments to the graphlab unity process
     val args = " --encoding=batch --type=dataframe "
-    pySparkToSFrame(javaRDDofPickles, outputDir, prefix, args)
+    pySparkToSFrame(javaRDDofPickles, path, prefix, args)
   }
 
 
@@ -782,9 +786,13 @@ object GraphLabUtil {
       val cs = Charset.forName("UTF-8")
       iter.map(s => s.getBytes(cs))
     }
+    var path: String = outputDir
+    if(path.endsWith("/")) { 
+      path = outputDir.slice(0, outputDir.length - 1)
+    } 
     // Construct the arguments to the graphlab unity process
     val args = " --encoding=utf8 --type=rdd "
-    pySparkToSFrame(javaRDDofUTF8Strings, outputDir, prefix, args)
+    pySparkToSFrame(javaRDDofUTF8Strings, path, prefix, args)
   }
 
   /**
