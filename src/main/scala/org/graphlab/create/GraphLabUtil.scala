@@ -73,7 +73,7 @@ object GraphLabUtil {
       path.toString 
     } 
     */
-    if (outputDir.startsWith("hdfs://")) { // this is an hdfs path to be created
+    if (outputDir.startsWith("hdfs://") || outputDir.startsWith("wasb://")) { // this is an hdfs path to be created
       val path = new org.apache.hadoop.fs.Path(outputDir, subDir)
       mkdirs(path.toString)
       changePermissions(path.toString)
@@ -391,7 +391,7 @@ object GraphLabUtil {
    */
   def getHadoopNameNode: String = {
     val conf = new org.apache.hadoop.conf.Configuration
-    conf.get("fs.default.name")
+    conf.get("fs.defaultFS")
   }
 
   /**
@@ -407,16 +407,7 @@ object GraphLabUtil {
    */
   def getHadoopNameNode(sc: SparkContext): String = {
     val conf = new org.apache.hadoop.conf.Configuration
-    var hadoopNameNode: String = conf.get("fs.default.name")
-    if (hadoopNameNode.startsWith("wasb://")) { 
-      val hadoopNameService = getHadoopNameService
-      if (hadoopNameService != null) { 
-        hadoopNameNode = "hdfs://" + getHadoopNameService
-      }
-      else { 
-        throw new Exception("fs.default.name returns a wasb address (" + hadoopNameNode + "). We cannot Proceed without activating dfs.nameservices")
-      }
-    }
+    var hadoopNameNode: String = conf.get("fs.defaultFS")
     hadoopNameNode
   }
 
@@ -651,9 +642,16 @@ object GraphLabUtil {
    */
   def pySparkToSFrame(jrdd: JavaRDD[Array[Byte]], outputDir: String, prefix: String, additionalArgs: String): String = {
     // Create folders
-    val internalOutput: String =
-      makeDir(outputDir, "internal", jrdd.sparkContext)
-    // println("Made dir: " + internalOutput)
+    val hostNameNode: String = getHadoopNameNode
+    var outputDirMod: String = outputDir
+    var internalOutput: String = ""
+    if(hostNameNode.startsWith("wasb://")) {
+      internalOutput = makeDir(outputDir.replace("hdfs://",hostNameNode), "internal", jrdd.sparkContext).replace(hostNameNode,"hdfs://") 
+      outputDirMod = outputDir.replace(hostNameNode,"hdfs://")
+    }
+    else {
+      internalOutput = makeDir(outputDir, "internal", jrdd.sparkContext)
+    }
     val argsTooSFrame = additionalArgs +
       s" --outputDir=$internalOutput " +
       s" --prefix=$prefix"
@@ -663,11 +661,15 @@ object GraphLabUtil {
     ).collect()
     
     val argsConcat = additionalArgs +
-      s" --outputDir=$outputDir " +
+      s" --outputDir=$outputDirMod " +
       s" --prefix=$prefix"
     val sframe_name = concat(fnames, argsConcat)
     if (sframe_name.startsWith("hdfs://")) { 
-      changePermissions(sframe_name)
+	if(hostNameNode.startsWith("wasb://")) {
+           changePermissions(sframe_name.replace("hdfs://",getHadoopNameNode))
+        } else { 
+	   changePermissions(sframe_name)
+	}
     }
     sframe_name
   }
@@ -799,8 +801,24 @@ object GraphLabUtil {
    * Load an SFrame into a JavaRDD of Pickled objects.
    */
   def pySparkToRDD(sc: SparkContext, sframePath: String, numPartitions: Int, additionalArgs: String): JavaRDD[Array[Byte]] =  {
+    val hostNameNode: String = getHadoopNameNode
+    var sframePathMod: String = sframePath
+    if (hostNameNode.startsWith("wasb://") && !sframePath.endsWith("frame_idx")) {
+       
+       val pb = new java.lang.ProcessBuilder(List("hadoop","fs","-ls",sframePath.replace("hdfs://",hostNameNode)))
+       val proc = pb.start()
+       val pathNames = scala.io.Source.fromInputStream(proc.getInputStream).getLines().toArray
+       for ( x <- pathNames ) {
+         if (x.endsWith("frame_idx")) { 
+           val startIndex = x.indexOf("wasb://")
+           val endIndex = x.indexOf("frame_idx")
+           sframePathMod = x.substring(startIndex,endIndex + "frame_idx".length)
+         }
+       }
+       sframePathMod = sframePathMod.replace(hostNameNode,"hdfs://")
+    }
     // @todo we currently use the --outputDir option to encode the input dir (consider changing)
-    val args = additionalArgs + s"--outputDir=$sframePath"
+    val args = additionalArgs + s"--outputDir=$sframePathMod"
     val pickledRDD = sc.parallelize(0 until numPartitions, numPartitions).mapPartitionsWithIndex {
       (partId: Int, iter: Iterator[Int]) => toRDDIterator(partId, numPartitions, args)
     }
