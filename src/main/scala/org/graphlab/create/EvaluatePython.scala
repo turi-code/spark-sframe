@@ -81,19 +81,30 @@ object EvaluatePython {
        for( i <- 0 until row.length){
          jmap.put(struct.fieldNames(i),toJava(row.get(i),struct.fields(i).dataType))
        }
-       jmap 
-    case (a: Any, array: ArrayType) =>
+       jmap
+    case (a: Any, arrayType: ArrayType) =>
       if (a.isInstanceOf[ArrayBuffer[_]]){
         val c : java.util.List[Any] = a.asInstanceOf[ArrayBuffer[_]]
-        c
+        val jarr = new java.util.ArrayList[Any]()
+        for(item <- c) {
+          jarr += toJava(item,arrayType.elementType)
+        }
+        jarr
       } 
       else if (a.isInstanceOf[collection.mutable.WrappedArray[_]]) {
         val c = a.asInstanceOf[collection.mutable.WrappedArray[_]].toArray
-        c
+        val jarr = new java.util.ArrayList[Any]()
+        for(item <- c) {
+          jarr += toJava(item,arrayType.elementType)
+        }
+        jarr
       } else 
         a
     case (o:Any, mt: DateType) =>
-      new java.util.Date(o.asInstanceOf[java.sql.Date].getDate())
+      if(o.isInstanceOf[java.sql.Date]) { 
+        new java.util.Date(o.asInstanceOf[java.sql.Date].getDate())
+      } else
+        o
     case (o: Any, mt: MapType) =>
       val map = o.asInstanceOf[Map[_,_]]
       val jmap = new java.util.HashMap[Any, Any](map.size)
