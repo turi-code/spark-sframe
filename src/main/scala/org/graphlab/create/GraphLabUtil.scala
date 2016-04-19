@@ -14,12 +14,14 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.fs.permission.{FsAction,FsPermission}
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.{SparkContext, _}
+import org.apache.spark.sql.SQLContext
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.dato.DatoSparkHelper
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, DataFrame}
 import org.apache.spark.dato.EvaluatePython
+import org.apache.spark.dato.EvaluateRDD
 import org.apache.spark.dato.AutoBatchedPickler
 
 import scala.collection.JavaConversions._
@@ -834,8 +836,6 @@ object GraphLabUtil {
   /**
    * Load an SFrame into an RDD of dictionaries
    *
-   * @todo convert objects into Dataframe rows
-   *
    * @param sc the spark context to use
    * @param sframePath the path to the sframe index file
    * @param numPartitions the number of partitions for the final RDD
@@ -851,7 +851,6 @@ object GraphLabUtil {
     }
   }
 
-
   /**
    * Load an SFrame into an RDD of dictionaries
    *
@@ -860,6 +859,31 @@ object GraphLabUtil {
    */
   def toRDD(sc: SparkContext, sframePath: String): RDD[java.util.HashMap[String, _]] = {
     toRDD(sc, sframePath, sc.defaultParallelism)
+  }
+  
+  /**
+   * Load an SFrame into a DataFrame
+   *
+   * @param sc the spark context to use
+   * @param sql the sqlContext to use
+   * @param sframePath the path to the sframe index file
+   * @param numPartitions the number of partitions for the final RDD
+   */
+  def toDataFrame(sc: SparkContext, sql: SQLContext, sframePath: String, numPartitions: Int): DataFrame = {
+    val rdd = toRDD(sc, sframePath,numPartitions)
+    EvaluateRDD.toSparkDataFrame(sql, rdd)
+  }
+
+  /**
+   * Load an SFrame into a DataFrame
+   *
+   * @param sc the spark context to use
+   * @param sql the sqlContext to use
+   * @param sframePath the path to the sframe index file
+   */
+  def toDataFrame(sc: SparkContext, sql: SQLContext, sframePath: String): DataFrame = {
+    val rdd = toRDD(sc, sframePath)
+    EvaluateRDD.toSparkDataFrame(sql, rdd)
   }
 
 } // End of GraphLabUtil
