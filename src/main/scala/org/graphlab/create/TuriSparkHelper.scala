@@ -1,11 +1,11 @@
 /**
- * Copyright (C) 2015 Dato, Inc.
+ * Copyright (C) 2015 Turi
  * All rights reserved.
  *
  * This software may be modified and distributed under the terms
  * of the BSD license. See the LICENSE file for details.
  */
-package org.apache.spark.dato
+package org.apache.spark.turi
 
 import java.io.File
 
@@ -21,7 +21,7 @@ import org.apache.spark.sql.DataFrame
  *
  * This code will need to evolve with Spark.
  */
-object DatoSparkHelper {
+object TuriSparkHelper {
 
 
   /**

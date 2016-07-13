@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2015 Dato, Inc.
+ * Copyright (C) 2015 Turi
  * All rights reserved.
 *
  * This software may be modified and distributed under the terms
@@ -16,13 +16,13 @@ import org.apache.spark.sql.types.DataType
 import org.apache.spark.{SparkContext, _}
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.api.java.JavaRDD
-import org.apache.spark.dato.DatoSparkHelper
+import org.apache.spark.turi.TuriSparkHelper
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, DataFrame}
-import org.apache.spark.dato.EvaluatePython
-import org.apache.spark.dato.EvaluateRDD
-import org.apache.spark.dato.AutoBatchedPickler
+import org.apache.spark.turi.EvaluatePython
+import org.apache.spark.turi.EvaluateRDD
+import org.apache.spark.turi.AutoBatchedPickler
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -463,7 +463,7 @@ object GraphLabUtil {
     // Getting the current python path and adding a separator if necessary
 
     val pythonPath = mergePaths(env.getOrElse("PYTHONPATH", ""),
-      DatoSparkHelper.sparkPythonPath)
+      TuriSparkHelper.sparkPythonPath)
     env.put("PYTHONPATH", pythonPath)
 
     // set the ld_library_path
@@ -741,7 +741,7 @@ object GraphLabUtil {
    * This oddly resolves an issue where the classloader may not capture all the closures when loading GraphLabUtil
    * through pyspark.
    *
-   * see issue https://github.com/dato-code/documents/issues/2915
+   * see issue https://github.com/turi-code/documents/issues/2915
    *
    * @param riter
    * @param fieldTypes

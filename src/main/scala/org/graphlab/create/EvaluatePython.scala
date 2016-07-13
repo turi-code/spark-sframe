@@ -15,7 +15,7 @@
 * limitations under the License.
 */
 
-package org.apache.spark.dato
+package org.apache.spark.turi
 
 import java.io.OutputStream
 import java.sql.Date

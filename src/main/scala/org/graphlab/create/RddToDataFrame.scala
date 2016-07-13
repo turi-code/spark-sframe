@@ -1,4 +1,4 @@
-package org.apache.spark.dato
+package org.apache.spark.turi
 
 import org.graphlab.create.GraphLabUtil
 import org.apache.spark.sql.{SQLContext, Row, DataFrame}
